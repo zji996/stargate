@@ -13,6 +13,8 @@
 - Component Settings：日志级别、sing-box 路径、配置路径、工作目录，以及带解释的生成/检查/应用/重启维护动作。
 - Safety：备份、透明代理、防火墙、dnsmasq 开关的显式边界。
 
+未配置当前节点时，Overview 不允许启用 Stargate，Component Settings 不允许执行生成、检查、应用或重启动作。init 脚本也会在启动前检查当前节点，避免通过 LuCI 之外的路径启动一个没有节点的 sing-box 服务。
+
 ## 多语言
 
 LuCI 页面使用英文作为源码默认语言，并通过 LuCI gettext 机制提供翻译：

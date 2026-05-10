@@ -106,11 +106,11 @@ validate_config() {
     exit 1
   }
   [ -n "$node_server" ] || {
-    echo "node server is required" >&2
+    echo "active node is required: add a node and choose Use this node before generating or starting Stargate" >&2
     exit 1
   }
   [ -n "$node_password" ] || {
-    echo "node password is required" >&2
+    echo "active node password is required: edit the node or choose another node" >&2
     exit 1
   }
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
@@ -528,6 +528,12 @@ status_json() {
   singbox_version="$("$singbox_bin" version 2>/dev/null | head -1 || true)"
   printf '{'
   printf '"enabled":"%s",' "$(uci_get global enabled 0)"
+  if [ -n "$node_server" ] && [ -n "$node_password" ]; then
+    printf '"node_ready":true,'
+  else
+    printf '"node_ready":false,'
+  fi
+  printf '"node_server":"%s",' "$(printf '%s' "$node_server" | json_escape)"
   printf '"config_file":"%s",' "$config_file"
   printf '"service":%s,' "$(printf '%s' "$service_state" | json_escape | sed 's/^/"/;s/$/"/')"
   printf '"singbox":%s' "$(printf '%s' "$singbox_version" | json_escape | sed 's/^/"/;s/$/"/')"

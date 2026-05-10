@@ -48,6 +48,9 @@ actions = ops:option(DummyValue, "_actions", ui_text("Maintenance actions", "维
 actions.rawhtml = true
 function actions.cfgvalue()
   local base = dispatcher.build_url("admin", "services", "stargate", "component")
+  local node_ready = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null")) ~= "" and trim(sys.exec("uci -q get stargate.node.password 2>/dev/null")) ~= ""
+  local disabled = node_ready and "" or " disabled"
+  local blocked_note = ui_text("Blocked until an active node is configured on the Node page.", "需要先在节点页配置当前节点后才能执行。")
   local rows = {
     {
       "generate",
@@ -81,8 +84,8 @@ function actions.cfgvalue()
   }
   for _, row in ipairs(rows) do
     html[#html + 1] = '<div class="stargate-component-action">'
-    html[#html + 1] = '<input class="cbi-button cbi-button-apply" type="button" value="' .. row[2] .. '" onclick="location.href=\'' .. base .. '?stargate_action=' .. row[1] .. '\'" />'
-    html[#html + 1] = '<div class="stargate-component-note">' .. row[3] .. '</div>'
+    html[#html + 1] = '<input class="cbi-button cbi-button-apply" type="button" value="' .. row[2] .. '"' .. disabled .. ' onclick="location.href=\'' .. base .. '?stargate_action=' .. row[1] .. '\'" />'
+    html[#html + 1] = '<div class="stargate-component-note">' .. row[3] .. (node_ready and "" or '<br /><strong>' .. blocked_note .. '</strong>') .. '</div>'
     html[#html + 1] = '</div>'
   end
   html[#html + 1] = '</div>'

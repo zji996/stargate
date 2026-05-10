@@ -37,13 +37,15 @@ return view.extend({
           '.stargate-card-title{display:block;font-size:12px;opacity:.72}',
           '.stargate-card-value{display:block;font-size:22px;font-weight:700;margin-top:6px;line-height:1.2}',
           '.stargate-card-note{display:block;font-size:12px;opacity:.72;margin-top:6px;line-height:1.35}',
+          '.stargate-alert{width:100%;padding:11px 13px;border:1px solid rgba(251,99,64,.55);border-radius:6px;color:#fb6340;background:rgba(251,99,64,.08)}',
           '.stargate-probe{cursor:pointer;color:inherit;font:inherit}',
           '.stargate-ok{color:#2dce89}.stargate-warn{color:#fb9a05}.stargate-bad{color:#fb6340}.stargate-muted{color:#8898aa}'
         ].join('')),
+        status.node_ready ? '' : E('div', { 'class': 'stargate-alert' }, _('No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate.')),
         E('div', { 'class': 'stargate-card' }, [
           E('span', { 'class': 'stargate-card-title' }, _('Runtime')),
-          E('span', { 'class': 'stargate-card-value' }, status.service || _('unknown')),
-          E('span', { 'class': 'stargate-card-note' }, status.enabled === '1' ? _('enabled') : _('disabled'))
+          E('span', { 'class': 'stargate-card-value' }, status.node_ready ? (status.service || _('unknown')) : _('not ready')),
+          E('span', { 'class': 'stargate-card-note' }, status.node_ready ? (status.enabled === '1' ? _('enabled') : _('disabled')) : _('active node required'))
         ]),
         E('div', { 'class': 'stargate-card' }, [
           E('span', { 'class': 'stargate-card-title' }, 'sing-box'),
@@ -55,6 +57,8 @@ return view.extend({
 
     var enabled = s.option(form.Flag, 'enabled', _('Enable'));
     enabled.rmempty = false;
+    enabled.readonly = !status.node_ready;
+    enabled.description = status.node_ready ? '' : _('Cannot enable Stargate before an active node is configured.');
 
     return m.render();
   }

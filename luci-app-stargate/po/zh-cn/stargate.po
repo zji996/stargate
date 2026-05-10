@@ -37,6 +37,18 @@ msgstr "启用"
 msgid "Runtime status and local outlet checks."
 msgstr "运行状态和本机出口检测。"
 
+msgid "No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate."
+msgstr "还没有配置当前节点。请先到节点页添加节点，并点击“使用此节点”，之后才能启用或启动 Stargate。"
+
+msgid "Cannot enable Stargate before an active node is configured."
+msgstr "未配置当前节点，不能启用 Stargate。"
+
+msgid "Enable Stargate service autostart. Start or restart from Component Settings after the config is applied."
+msgstr "启用 Stargate 服务开机自启。配置应用后请到组件设置中启动或重启服务。"
+
+msgid "Disabled until an active node is configured."
+msgstr "需要先配置当前节点后才能启用。"
+
 msgid "Manage sing-box component paths and explicit config lifecycle actions."
 msgstr "管理 sing-box 组件路径和显式配置生命周期操作。"
 
@@ -69,6 +81,12 @@ msgstr "未检测到"
 
 msgid "unknown"
 msgstr "未知"
+
+msgid "not ready"
+msgstr "未就绪"
+
+msgid "active node required"
+msgstr "需要当前节点"
 
 msgid "Actions"
 msgstr "操作"
@@ -111,6 +129,9 @@ msgstr "校验并替换当前正式配置，不启用透明代理，也不改防
 
 msgid "Restart only the Stargate sing-box service with the current active config."
 msgstr "仅使用当前正式配置重启 Stargate 的 sing-box 服务。"
+
+msgid "Blocked until an active node is configured on the Node page."
+msgstr "需要先在节点页配置当前节点后才能执行。"
 
 msgid "Primary node"
 msgstr "主节点"

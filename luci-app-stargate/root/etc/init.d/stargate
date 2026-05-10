@@ -7,15 +7,23 @@ USE_PROCD=1
 name="stargate"
 command="/usr/bin/sing-box"
 config="/etc/stargate/config.json"
+node_server=""
+node_password=""
 
 load_uci() {
   config_load stargate
   config_get command global singbox_bin "/usr/bin/sing-box"
   config_get config global config_file "/etc/stargate/config.json"
+  config_get node_server node server ""
+  config_get node_password node password ""
 }
 
 start_service() {
   load_uci
+  [ -n "$node_server" ] && [ -n "$node_password" ] || {
+    echo "active node missing: add a node and use it before starting Stargate" >&2
+    return 1
+  }
   [ -x "$command" ] || {
     echo "sing-box missing: $command" >&2
     return 1

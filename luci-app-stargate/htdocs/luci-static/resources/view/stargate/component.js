@@ -5,7 +5,19 @@
 'require ui';
 
 return view.extend({
-  render: function() {
+  load: function() {
+    return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'status' ]).then(function(text) {
+      try {
+        return JSON.parse(text || '{}');
+      } catch (e) {
+        return {};
+      }
+    }).catch(function() {
+      return {};
+    });
+  },
+
+  render: function(status) {
     var m = new form.Map('stargate', _('Component Settings'));
     m.description = _('Manage sing-box component paths and explicit config lifecycle actions.');
 
@@ -31,17 +43,23 @@ return view.extend({
     var actions = ops.option(form.DummyValue, '_actions', _('Maintenance actions'));
     actions.rawhtml = true;
     actions.cfgvalue = function() {
+      var blocked = !status.node_ready;
+      var blockedNote = _('Blocked until an active node is configured on the Node page.');
+
       function actionButton(label, note, command, args, cls) {
         return E('div', { 'class': 'stargate-component-action' }, [
           E('button', {
             'class': 'btn cbi-button ' + (cls || 'cbi-button-neutral'),
+            'disabled': blocked ? '' : null,
             'click': ui.createHandlerFn(this, function() {
+              if (blocked)
+                return;
               return fs.exec(command, args)
                 .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || label)); })
                 .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
             })
           }, [ label ]),
-          E('div', { 'class': 'stargate-component-note' }, note)
+          E('div', { 'class': 'stargate-component-note' }, blocked ? [ note, E('br'), E('strong', {}, blockedNote) ] : note)
         ]);
       }
 

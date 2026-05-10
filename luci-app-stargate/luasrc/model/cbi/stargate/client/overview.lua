@@ -17,6 +17,12 @@ local function ui_text(en, zh)
   return en
 end
 
+local function has_active_node()
+  local server = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null"))
+  local password = trim(sys.exec("uci -q get stargate.node.password 2>/dev/null"))
+  return server ~= "" and password ~= ""
+end
+
 s = m:section(NamedSection, "global", "global", translate("Overview"))
 s.anonymous = true
 
@@ -31,6 +37,7 @@ function dash.cfgvalue()
   local http_listen = trim(sys.exec("uci -q get stargate.inbound.http_listen 2>/dev/null || echo 127.0.0.1"))
   local http_port = trim(sys.exec("uci -q get stargate.inbound.http_port 2>/dev/null || echo 10809"))
   local node = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null || echo unset"))
+  local node_ready = has_active_node()
   local connect_url = dispatcher.build_url("admin", "services", "stargate", "connect_status")
   local touch_check = ui_text("Touch Check", "点击检测")
   local checking = ui_text("Check...", "检测中...")
@@ -80,16 +87,18 @@ function dash.cfgvalue()
     '.stargate-probe{cursor:pointer;color:inherit;font:inherit}',
     '.stargate-probe:hover{border-color:#999;background:rgba(127,127,127,.12)}',
     '.stargate-probe-value{display:block;font-size:18px;font-weight:700;margin-top:5px;line-height:1.2}',
+    '.stargate-alert{max-width:880px;margin:0 auto 14px;padding:11px 13px;border:1px solid rgba(251,99,64,.55);border-radius:6px;color:#fb6340;background:rgba(251,99,64,.08)}',
     '.stargate-ok{color:#2dce89}.stargate-warn{color:#fb9a05}.stargate-bad{color:#fb6340}.stargate-muted{color:#8898aa}',
     '@media screen and (max-width:1180px){.stargate-dashboard{grid-template-columns:repeat(2,minmax(220px,1fr))}.stargate-probes{grid-template-columns:repeat(3,minmax(180px,1fr))}}',
     '@media screen and (max-width:720px){.stargate-dashboard,.stargate-probes{grid-template-columns:1fr}.stargate-card{min-height:84px}}',
     '</style>',
     '<div class="stargate-wrap">',
+    (node_ready and "" or '<div class="stargate-alert">' .. ui_text("No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate.", "还没有配置当前节点。请先到节点页添加节点，并点击“使用此节点”，之后才能启用或启动 Stargate。") .. '</div>'),
     '<div class="stargate-dashboard">',
-    card(ui_text("Runtime", "运行状态"), running, enabled, nil, "S"),
+    card(ui_text("Runtime", "运行状态"), node_ready and running or ui_text("not ready", "未就绪"), node_ready and enabled or ui_text("active node required", "需要当前节点"), nil, "S"),
     card("sing-box", version ~= "" and version or translate("not detected"), "/usr/bin/sing-box", nil, "SB"),
     card(ui_text("Local proxy", "本机代理"), socks .. ":" .. socks_port, "HTTP " .. http_listen .. ":" .. http_port, nil, "P"),
-    card(ui_text("Node", "节点"), node, ui_text("AnyTLS primary", "AnyTLS 主节点"), nil, "N"),
+    card(ui_text("Node", "节点"), node_ready and node or ui_text("not ready", "未就绪"), node_ready and ui_text("AnyTLS primary", "AnyTLS 主节点") or ui_text("Add and use a node first", "请先添加并使用节点"), nil, "N"),
     '</div>',
     '<div class="stargate-dashboard stargate-probes">',
     probe_card("baidu", ui_text("Baidu Connection", "百度连接"), "B"),
@@ -107,7 +116,29 @@ function dash.cfgvalue()
   }, "\n")
 end
 
-enabled = s:option(Flag, "enabled", translate("Enable"))
-enabled.rmempty = false
+if has_active_node() then
+  enabled = s:option(Flag, "enabled", translate("Enable"))
+  enabled.rmempty = false
+  enabled.description = ui_text("Enable Stargate service autostart. Start or restart from Component Settings after the config is applied.", "启用 Stargate 服务开机自启。配置应用后请到组件设置中启动或重启服务。")
+  function enabled.write(self, section, value)
+    if value == "1" and not has_active_node() then
+      self.error = { [section] = ui_text("Cannot enable Stargate before an active node is configured.", "未配置当前节点，不能启用 Stargate。") }
+      return
+    end
+    Flag.write(self, section, value)
+    if value == "1" then
+      sys.call("/etc/init.d/stargate enable >/dev/null 2>&1")
+    else
+      sys.call("/etc/init.d/stargate disable >/dev/null 2>&1")
+    end
+  end
+else
+  enabled_blocked = s:option(DummyValue, "_enabled_blocked", translate("Enable"))
+  enabled_blocked.rawhtml = true
+  enabled_blocked.description = ui_text("Disabled until an active node is configured.", "需要先配置当前节点后才能启用。")
+  function enabled_blocked.cfgvalue()
+    return '<input type="checkbox" disabled="disabled" />'
+  end
+end
 
 return m
