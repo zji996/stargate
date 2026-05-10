@@ -110,7 +110,7 @@ function nodes.cfgvalue()
     '.stargate-node-field label{display:block;font-size:12px;opacity:.72;margin-bottom:5px}',
     '.stargate-node-field input,.stargate-node-field textarea{width:100%;box-sizing:border-box}',
     '.stargate-node-field textarea{min-height:96px;resize:vertical}',
-    '.stargate-node-modal{display:none;position:fixed;top:0;right:0;bottom:0;left:300px;z-index:9000;align-items:center;justify-content:center;background:rgba(0,0,0,.56);padding:18px;box-sizing:border-box}',
+    '.stargate-node-modal{display:none;position:fixed;top:0;right:0;bottom:0;left:300px;z-index:9000;align-items:center;justify-content:center;background:transparent;padding:18px;box-sizing:border-box}',
     '.stargate-node-modal.stargate-node-modal-open{display:flex}',
     '.stargate-node-dialog{width:min(720px,calc(100vw - 340px));max-height:calc(100vh - 42px);overflow:auto;border:1px solid rgba(140,140,140,.55);border-radius:8px;background:#1f1f1f;color:#d8d8d8;box-shadow:0 18px 48px rgba(0,0,0,.45)}',
     '.stargate-node-dialog-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:14px 16px;border-bottom:1px solid rgba(140,140,140,.28);background:#2b2b2b}',
