@@ -94,9 +94,6 @@ msgstr "当前使用节点"
 msgid "Manage a small AnyTLS node list. Use a node to copy it into the active sing-box config."
 msgstr "管理轻量 AnyTLS 节点列表。使用节点会复制到当前 sing-box 配置。"
 
-msgid "Node actions"
-msgstr "节点操作"
-
 msgid "Type"
 msgstr "类型"
 
@@ -124,6 +121,9 @@ msgstr "添加节点"
 msgid "Edit node"
 msgstr "编辑节点"
 
+msgid "Edit"
+msgstr "编辑"
+
 msgid "Add"
 msgstr "添加"
 
@@ -144,6 +144,12 @@ msgstr "通过链接添加"
 
 msgid "AnyTLS link"
 msgstr "AnyTLS 链接"
+
+msgid "Use this node"
+msgstr "使用此节点"
+
+msgid "Keep unchanged if empty"
+msgstr "留空则不修改"
 
 msgid "Node list"
 msgstr "节点列表"

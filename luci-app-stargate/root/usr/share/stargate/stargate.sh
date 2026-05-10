@@ -18,7 +18,7 @@ Usage:
   /usr/share/stargate/stargate.sh probe baidu|google|github
   /usr/share/stargate/stargate.sh node-add label server port password sni insecure
   /usr/share/stargate/stargate.sh node-add-link anytls://...
-  /usr/share/stargate/stargate.sh node-save-active label server port password sni insecure
+  /usr/share/stargate/stargate.sh node-update id label server port password sni insecure
   /usr/share/stargate/stargate.sh node-list
   /usr/share/stargate/stargate.sh node-use id
   /usr/share/stargate/stargate.sh node-delete id
@@ -261,28 +261,36 @@ node_add_link() {
   node_add_values "$node_label" "$node_server" "$node_port" "$node_password" "$node_sni" "$node_insecure"
 }
 
-node_save_active() {
-  node_label="${1:-}"
-  node_server="${2:-}"
-  node_port="${3:-443}"
-  node_password="${4:-}"
-  node_sni="${5:-}"
-  node_insecure="${6:-1}"
+node_update() {
+  id="${1:-}"
+  case "$id" in ''|*[!A-Za-z0-9_-]*) echo "invalid node id" >&2; exit 1 ;; esac
+  [ "$(uci_get "$id" type '')" = "anytls" ] || {
+    echo "node not found or unsupported: $id" >&2
+    exit 1
+  }
+
+  node_label="${2:-}"
+  node_server="${3:-}"
+  node_port="${4:-443}"
+  node_password="${5:-}"
+  node_sni="${6:-}"
+  node_insecure="${7:-1}"
   node_type="anytls"
   [ -n "$node_label" ] || node_label="$node_server"
   [ -n "$node_port" ] || node_port="443"
+  [ -n "$node_password" ] || node_password="$(uci_get "$id" password '')"
   case "$node_insecure" in 1|true|TRUE|yes|on) node_insecure="1" ;; *) node_insecure="0" ;; esac
   validate_node_fields
 
-  uci_cmd set "$app.node.type=anytls"
-  uci_cmd set "$app.node.label=$node_label"
-  uci_cmd set "$app.node.server=$node_server"
-  uci_cmd set "$app.node.server_port=$node_port"
-  uci_cmd set "$app.node.password=$node_password"
-  uci_cmd set "$app.node.sni=$node_sni"
-  uci_cmd set "$app.node.insecure=$node_insecure"
+  uci_cmd set "$app.$id.type=anytls"
+  uci_cmd set "$app.$id.label=$node_label"
+  uci_cmd set "$app.$id.server=$node_server"
+  uci_cmd set "$app.$id.server_port=$node_port"
+  uci_cmd set "$app.$id.password=$node_password"
+  uci_cmd set "$app.$id.sni=$node_sni"
+  uci_cmd set "$app.$id.insecure=$node_insecure"
   uci_commit
-  echo "active node saved: $node_label"
+  echo "node updated: $node_label"
 }
 
 node_list() {
@@ -581,7 +589,7 @@ case "$action" in
   probe) probe_url "${2:-}" ;;
   node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" ;;
   node-add-link) node_add_link "${2:-}" ;;
-  node-save-active) node_save_active "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" ;;
+  node-update) node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" ;;
   node-list) node_list ;;
   node-use) node_use "${2:-}" ;;
   node-delete) node_delete "${2:-}" ;;
