@@ -327,16 +327,19 @@ msgstr ""
 msgid "DNS hijack"
 msgstr ""
 
-msgid "Use Loyalsoldier rules with small user overrides. Rules are not bundled; update them explicitly before generating config."
+msgid "Use Loyalsoldier as the base rule source. Pick a blacklist or whitelist routing mode, then add only the few domains you want to override."
 msgstr ""
 
 msgid "Rule policy"
 msgstr ""
 
-msgid "Loyalsoldier direct/proxy rules"
+msgid "Blacklist mode"
 msgstr ""
 
-msgid "Recommended: use upstream direct-list and proxy-list. User direct/proxy domains are matched before upstream rules."
+msgid "Whitelist mode"
+msgstr ""
+
+msgid "Blacklist: default direct, listed proxy domains use the node. Whitelist: default proxy, listed direct domains go direct."
 msgstr ""
 
 msgid "Rule source"
@@ -357,37 +360,37 @@ msgstr ""
 msgid "Proxy rule-set path"
 msgstr ""
 
-msgid "Proxy outbound"
-msgstr ""
-
 msgid "User direct domains"
 msgstr ""
 
-msgid "One domain per line. These domains always go direct and take priority over upstream proxy rules."
+msgid "One domain per line. These domains always go direct and take priority over the base rules."
 msgstr ""
 
 msgid "User proxy domains"
 msgstr ""
 
-msgid "One domain per line. These domains always use the proxy outbound and take priority over upstream direct rules."
+msgid "One domain per line. These domains always use the node and take priority over the base rules."
 msgstr ""
 
 msgid "Rule actions"
 msgstr ""
 
-msgid "Update Loyalsoldier rules"
+msgid "Update base rules"
 msgstr ""
 
 msgid "Refresh status"
 msgstr ""
 
-msgid "Rules updated"
+msgid "Rule files"
 msgstr ""
 
-msgid "Proxy"
+msgid "Not updated"
 msgstr ""
 
-msgid "Default outbound"
+msgid "Rules updated successfully."
+msgstr ""
+
+msgid "Rule status refreshed."
 msgstr ""
 
 msgid "Private IP direct"

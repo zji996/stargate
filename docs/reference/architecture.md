@@ -93,9 +93,9 @@ LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直�
 
 - `direct-list.txt` 转换为 `/usr/share/stargate/rules/direct.json`。
 - `proxy-list.txt` 转换为 `/usr/share/stargate/rules/proxy.json`。
-- 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成 inline rule-set，优先级高于上游列表。
+- 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成优先级高于上游列表的 route rule。
 
-规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件；当 `ruleset` 模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
+规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
 
 ## 路由器经验
 

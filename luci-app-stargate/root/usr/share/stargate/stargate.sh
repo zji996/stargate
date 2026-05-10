@@ -96,9 +96,8 @@ load_config() {
   dns_remote_path="$(uci_get dns remote_path /dns-query)"
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
 
-  rules_mode="$(uci_get rules mode ruleset)"
-  rules_default_outbound="$(uci_get rules default_outbound direct)"
-  rules_proxy_outbound="$(uci_get rules proxy_outbound anytls-out)"
+  rules_mode="$(uci_get rules mode blacklist)"
+  rules_default_outbound="direct"
   rules_source="$(uci_get rules source loyalsoldier)"
   rules_source_base_url="$(uci_get rules source_base_url https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release)"
   rules_direct_rule_set="$(uci_get rules direct_rule_set /usr/share/stargate/rules/direct.json)"
@@ -127,16 +126,14 @@ validate_config() {
   case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
-  case "$rules_mode" in ruleset|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
-  case "$rules_default_outbound" in direct|anytls-out) ;; *) echo "unsupported default outbound: $rules_default_outbound" >&2; exit 1 ;; esac
-  case "$rules_proxy_outbound" in direct|anytls-out) ;; *) echo "unsupported proxy outbound: $rules_proxy_outbound" >&2; exit 1 ;; esac
-  if [ "$rules_mode" = "ruleset" ]; then
+  case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
+  if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     [ -f "$rules_direct_rule_set" ] || {
-      echo "direct rule-set missing: run Rules -> Update Loyalsoldier rules first ($rules_direct_rule_set)" >&2
+      echo "direct rule-set missing: run Rules -> Update base rules first ($rules_direct_rule_set)" >&2
       exit 1
     }
     [ -f "$rules_proxy_rule_set" ] || {
-      echo "proxy rule-set missing: run Rules -> Update Loyalsoldier rules first ($rules_proxy_rule_set)" >&2
+      echo "proxy rule-set missing: run Rules -> Update base rules first ($rules_proxy_rule_set)" >&2
       exit 1
     }
   fi
@@ -427,13 +424,13 @@ node_delete() {
 
 rules_status() {
   load_config
-  direct_count=0
-  proxy_count=0
-  [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}')"
-  [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}')"
-  printf 'source=%s\n' "$rules_source"
-  printf 'direct=%s %s\n' "$rules_direct_rule_set" "$direct_count"
-  printf 'proxy=%s %s\n' "$rules_proxy_rule_set" "$proxy_count"
+  direct_count="not updated"
+  proxy_count="not updated"
+  [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
+  [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
+  printf 'Rule source: Loyalsoldier/v2ray-rules-dat\n'
+  printf 'Direct list: %s\n' "$direct_count"
+  printf 'Proxy list: %s\n' "$proxy_count"
 }
 
 json_array_from_list() {
@@ -509,7 +506,7 @@ rules_update() {
   [ -s "$tmp_dir/proxy-list.txt" ] || { echo "downloaded proxy list is empty" >&2; exit 1; }
   write_rule_set_json "$tmp_dir/direct-list.txt" "$rules_direct_rule_set"
   write_rule_set_json "$tmp_dir/proxy-list.txt" "$rules_proxy_rule_set"
-  echo "rules updated:"
+  echo "Rules updated."
   rules_status
 }
 
@@ -560,14 +557,14 @@ write_dns_servers() {
 }
 
 write_dns_rules() {
-  if [ "$rules_mode" = "ruleset" ]; then
+  if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     printf '      { "rule_set": "direct", "server": "direct-dns" },\n'
     printf '      { "rule_set": "proxy", "server": "remote-doh" }\n'
   fi
 }
 
 write_rule_sets() {
-  if [ "$rules_mode" = "ruleset" ]; then
+  if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     printf '      {\n'
     printf '        "type": "local",\n'
     printf '        "tag": "direct",\n'
@@ -600,13 +597,18 @@ write_route_rules() {
   if [ "$rules_private_direct" = "1" ]; then
     add_rule '{ "ip_is_private": true, "outbound": "direct" }'
   fi
-  if [ "$rules_mode" = "ruleset" ]; then
+  if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     custom_direct_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" "direct")"
-    custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "$rules_proxy_outbound")"
+    custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "anytls-out")"
     [ -z "$custom_direct_rule" ] || add_rule "$custom_direct_rule"
     [ -z "$custom_proxy_rule" ] || add_rule "$custom_proxy_rule"
     add_rule '{ "rule_set": "direct", "outbound": "direct" }'
-    add_rule '{ "rule_set": "proxy", "outbound": "'"$rules_proxy_outbound"'" }'
+    add_rule '{ "rule_set": "proxy", "outbound": "anytls-out" }'
+    if [ "$rules_mode" = "blacklist" ]; then
+      rules_default_outbound="direct"
+    else
+      rules_default_outbound="anytls-out"
+    fi
   elif [ "$rules_mode" = "global_proxy" ]; then
     rules_default_outbound="anytls-out"
   elif [ "$rules_mode" = "direct" ]; then
