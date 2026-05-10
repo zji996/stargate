@@ -1,0 +1,7 @@
+[submodule "third_party/openwrt-passwall2"]
+	path = third_party/openwrt-passwall2
+	url = https://github.com/zji996/openwrt-passwall2
+[submodule "third_party/sing-box"]
+	path = third_party/sing-box
+	url = https://github.com/zji996/sing-box
+	branch = dev-next
