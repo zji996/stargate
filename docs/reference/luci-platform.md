@@ -6,14 +6,14 @@
 
 当前包含：
 
-- Overview：较大的状态面板、本机出口连通性测试和启用状态。维护类配置不放在概览页。
+- Overview：较大的状态面板、本机出口连通性测试，以及显式启动入口。本机代理启动只启用 SOCKS/HTTP；透明代理启动额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
 - Node：轻量节点列表、手动添加节点、通过 `anytls://` 链接添加节点、行内使用节点、弹窗编辑节点，以及本机 SOCKS/HTTP 入站。
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
 - Rules：基于 Loyalsoldier 基础规则的黑名单/白名单分流，并支持少量用户直连/代理域名覆盖。
-- Component Settings：日志级别、sing-box 路径、配置路径、工作目录，以及带解释的生成/检查/应用/重启维护动作。
-- Safety：备份、透明代理、防火墙、dnsmasq 开关的显式边界。
+- Component Settings：日志级别、sing-box 路径、配置路径、工作目录，以及带解释的生成/检查/应用/重启/回滚维护动作。
+- Logs：最近的 Stargate 和 sing-box 日志。
 
-未配置当前节点时，Overview 不允许启用 Stargate，Component Settings 不允许执行生成、检查、应用或重启动作。init 脚本也会在启动前检查当前节点，避免通过 LuCI 之外的路径启动一个没有节点的 sing-box 服务。
+未配置当前节点时，Overview 不允许启动本机代理或透明代理，Component Settings 不允许执行生成、检查、应用或重启动作。回滚动作不依赖当前节点，因为它恢复的是上一份已校验过的正式配置。init 脚本也会在启动前检查当前节点，避免通过 LuCI 之外的路径启动一个没有节点的 sing-box 服务。
 
 ## 多语言
 
@@ -182,11 +182,10 @@ Rules 页刻意不暴露默认出站和代理出站这类实现细节。用户�
 
 ## 暂不启用的能力
 
-这些开关已经在 Safety 页面表达，但第一版后端不执行系统接管：
+第一版已经提供透明代理入站的显式启动入口，但仍不执行系统级接管：
 
-- 透明代理
-- 防火墙规则管理
-- dnsmasq 接管
-- DHCP 下发 DNS 修改
+- 不自动写入 firewall4 / nftables 转发规则。
+- 不接管 dnsmasq。
+- 不修改 DHCP 下发 DNS。
 
 后续实现这些能力时，必须先做 dry-run、环境探测和失败回滚。

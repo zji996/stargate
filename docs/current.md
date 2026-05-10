@@ -39,7 +39,8 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 2026-05-10 在路由器上用 `/tmp/stargate-test` 做过隔离测试：`sing-box check` 通过，短时运行只监听 `127.0.0.1:18080` 和 `127.0.0.1:18081`，没有接管透明代理、DNS 或防火墙。
 - 2026-05-11 在路由器上部署 LuCI 时发现该固件不支持 Lua controller 的 `view()` 入口，已改用 `cbi()` + `luasrc/model/cbi/stargate/client/*.lua`。服务菜单已正常出现。
 - Overview 状态面板参考 PassWall2 的点击式检测体验，但检测固定为路由器本机直连出口，并返回 HTTP 状态、延迟、出口 dev/src，便于排查 Tailscale、策略路由或多 WAN 影响。
-- Overview 只保留状态和连接检测；日志级别、sing-box 路径、配置路径、工作目录、生成/检查/应用/重启等维护项放到 Component Settings（组件设置）页，并带明确操作说明。
+- Overview 保留状态、连接检测和显式启动入口：可启动本机代理，或以 `redirect` / `tproxy` 模式启动透明代理入站。透明代理默认仍关闭，不会在未点击透明启动时接管网络。
+- 日志独立为 Logs 页；日志级别、sing-box 路径、配置路径、工作目录、生成/检查/应用/重启/回滚等维护项放到 Component Settings（组件设置）页，并带明确操作说明。
 - 未配置当前节点时，Overview 的启用开关不可用并显示阻塞提示；组件设置里的生成/检查/应用/重启也会提示先配置节点；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
 - Node 页开始提供轻量节点列表，支持手动添加 AnyTLS、通过 `anytls://` 链接添加、编辑节点、使用节点和删除节点。新增和链接添加入口位于节点列表上方，节点编辑和“使用此节点”跟随列表行。第一版不做订阅和多协议导入。
 - DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Cloudflare DoH，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。第一版仍只写 sing-box 内部 DNS，不接管 dnsmasq。

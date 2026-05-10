@@ -27,6 +27,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - 替换前备份上一份配置到 `/etc/stargate/config.json.bak`。
 - 启动失败时回滚上一份配置。
 - DNS 只写 sing-box 内部 DNS，不修改 dnsmasq、不改 DHCP 下发 DNS。
+- LuCI 版后端提供显式 `rollback` 动作，会先用 `sing-box check` 校验备份配置，再恢复到正式配置；如果服务正在运行，会用恢复后的配置重启。
 
 ## 仓库结构
 
@@ -50,6 +51,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - 运行配置：`/etc/stargate/config.json`
 - 下一份待校验配置：`/etc/stargate/config.json.next`
 - 上一份备份配置：`/etc/stargate/config.json.bak`
+- 回滚前保留的失败配置：`/etc/stargate/config.json.rollback_from`
 - 本地监听环境文件：`/etc/stargate/env`
 - init 服务：`/etc/init.d/stargate`
 - 默认 sing-box：`/usr/bin/sing-box`
@@ -67,6 +69,13 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 5. 如果已有正式配置，复制为 `/etc/stargate/config.json.bak`。
 6. 将 `.next` 替换为正式配置。
 7. 启动失败时尝试复制 `.bak` 回正式配置并重启。
+
+LuCI 版后端还提供两个显式启动动作：
+
+- `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
+- `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。
+
+这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。当前透明代理动作只管理 sing-box 透明入站本身，不自动写入防火墙转发规则、dnsmasq 或 DHCP。
 
 ## 命名边界
 
