@@ -69,7 +69,7 @@ final:value("remote-doh", translate("Remote"))
 final:value("direct-dns", translate("Direct"))
 final:value("local", translate("System local"))
 final.default = "direct-dns"
-final.description = translate("Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver.")
+final.description = translate("Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.")
 
 hijack_dns = s:option(Flag, "hijack_dns", translate("DNS hijack"))
 hijack_dns.default = "0"

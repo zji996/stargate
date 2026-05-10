@@ -75,7 +75,7 @@ return view.extend({
     final.value('direct-dns', _('Direct'));
     final.value('local', _('System local'));
     final.default = 'direct-dns';
-    final.description = _('Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver.');
+    final.description = _('Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.');
 
     var hijack = s.option(form.Flag, 'hijack_dns', _('DNS hijack'));
     hijack.default = '0';

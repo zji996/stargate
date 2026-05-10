@@ -36,8 +36,7 @@ check_docs() {
     luci-app-stargate/luasrc/controller/stargate.lua \
     luci-app-stargate/root/etc/config/stargate \
     luci-app-stargate/root/usr/share/luci/menu.d/luci-app-stargate.json \
-    luci-app-stargate/root/usr/share/rpcd/acl.d/luci-app-stargate.json \
-    luci-app-stargate/root/usr/share/stargate/rules/gfw.json
+    luci-app-stargate/root/usr/share/rpcd/acl.d/luci-app-stargate.json
   do
     if [ ! -f "$file" ]; then
       echo "missing: $file" >&2
@@ -59,8 +58,7 @@ check_docs() {
 check_json() {
   for file in \
     luci-app-stargate/root/usr/share/luci/menu.d/luci-app-stargate.json \
-    luci-app-stargate/root/usr/share/rpcd/acl.d/luci-app-stargate.json \
-    luci-app-stargate/root/usr/share/stargate/rules/gfw.json
+    luci-app-stargate/root/usr/share/rpcd/acl.d/luci-app-stargate.json
   do
     python3 -m json.tool "$file" >/dev/null
   done

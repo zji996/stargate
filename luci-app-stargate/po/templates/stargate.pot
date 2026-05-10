@@ -312,7 +312,7 @@ msgstr ""
 msgid "Final resolver"
 msgstr ""
 
-msgid "Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver."
+msgid "Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver."
 msgstr ""
 
 msgid "Remote"
@@ -327,10 +327,19 @@ msgstr ""
 msgid "DNS hijack"
 msgstr ""
 
-msgid "GFW based routing"
+msgid "Use Loyalsoldier rules with small user overrides. Rules are not bundled; update them explicitly before generating config."
 msgstr ""
 
-msgid "GFW list"
+msgid "Rule policy"
+msgstr ""
+
+msgid "Loyalsoldier direct/proxy rules"
+msgstr ""
+
+msgid "Recommended: use upstream direct-list and proxy-list. User direct/proxy domains are matched before upstream rules."
+msgstr ""
+
+msgid "Rule source"
 msgstr ""
 
 msgid "Global proxy"
@@ -339,10 +348,40 @@ msgstr ""
 msgid "Direct only"
 msgstr ""
 
-msgid "GFW rule-set path"
+msgid "Source base URL"
 msgstr ""
 
-msgid "GFW outbound"
+msgid "Direct rule-set path"
+msgstr ""
+
+msgid "Proxy rule-set path"
+msgstr ""
+
+msgid "Proxy outbound"
+msgstr ""
+
+msgid "User direct domains"
+msgstr ""
+
+msgid "One domain per line. These domains always go direct and take priority over upstream proxy rules."
+msgstr ""
+
+msgid "User proxy domains"
+msgstr ""
+
+msgid "One domain per line. These domains always use the proxy outbound and take priority over upstream direct rules."
+msgstr ""
+
+msgid "Rule actions"
+msgstr ""
+
+msgid "Update Loyalsoldier rules"
+msgstr ""
+
+msgid "Refresh status"
+msgstr ""
+
+msgid "Rules updated"
 msgstr ""
 
 msgid "Proxy"

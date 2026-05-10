@@ -22,6 +22,8 @@ Usage:
   /usr/share/stargate/stargate.sh node-list
   /usr/share/stargate/stargate.sh node-use id
   /usr/share/stargate/stargate.sh node-delete id
+  /usr/share/stargate/stargate.sh rules-update
+  /usr/share/stargate/stargate.sh rules-status
   /usr/share/stargate/stargate.sh logs
 USAGE
 }
@@ -94,10 +96,15 @@ load_config() {
   dns_remote_path="$(uci_get dns remote_path /dns-query)"
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
 
-  rules_mode="$(uci_get rules mode gfw)"
+  rules_mode="$(uci_get rules mode ruleset)"
   rules_default_outbound="$(uci_get rules default_outbound direct)"
-  rules_gfw_outbound="$(uci_get rules gfw_outbound anytls-out)"
-  rules_gfw_rule_set="$(uci_get rules gfw_rule_set /usr/share/stargate/rules/gfw.json)"
+  rules_proxy_outbound="$(uci_get rules proxy_outbound anytls-out)"
+  rules_source="$(uci_get rules source loyalsoldier)"
+  rules_source_base_url="$(uci_get rules source_base_url https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release)"
+  rules_direct_rule_set="$(uci_get rules direct_rule_set /usr/share/stargate/rules/direct.json)"
+  rules_proxy_rule_set="$(uci_get rules proxy_rule_set /usr/share/stargate/rules/proxy.json)"
+  rules_custom_direct_domains="$(uci_get rules custom_direct_domains '')"
+  rules_custom_proxy_domains="$(uci_get rules custom_proxy_domains '')"
   rules_private_direct="$(uci_get rules private_direct 1)"
   rules_block_quic="$(uci_get rules block_quic 0)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
@@ -120,6 +127,19 @@ validate_config() {
   case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
+  case "$rules_mode" in ruleset|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
+  case "$rules_default_outbound" in direct|anytls-out) ;; *) echo "unsupported default outbound: $rules_default_outbound" >&2; exit 1 ;; esac
+  case "$rules_proxy_outbound" in direct|anytls-out) ;; *) echo "unsupported proxy outbound: $rules_proxy_outbound" >&2; exit 1 ;; esac
+  if [ "$rules_mode" = "ruleset" ]; then
+    [ -f "$rules_direct_rule_set" ] || {
+      echo "direct rule-set missing: run Rules -> Update Loyalsoldier rules first ($rules_direct_rule_set)" >&2
+      exit 1
+    }
+    [ -f "$rules_proxy_rule_set" ] || {
+      echo "proxy rule-set missing: run Rules -> Update Loyalsoldier rules first ($rules_proxy_rule_set)" >&2
+      exit 1
+    }
+  fi
 }
 
 apply_dns_presets() {
@@ -405,6 +425,120 @@ node_delete() {
   echo "node deleted: $id"
 }
 
+rules_status() {
+  load_config
+  direct_count=0
+  proxy_count=0
+  [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}')"
+  [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}')"
+  printf 'source=%s\n' "$rules_source"
+  printf 'direct=%s %s\n' "$rules_direct_rule_set" "$direct_count"
+  printf 'proxy=%s %s\n' "$rules_proxy_rule_set" "$proxy_count"
+}
+
+json_array_from_list() {
+  key="$1"
+  file="$2"
+  awk -v key="$key" '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function emit(v) {
+      gsub(/\\/,"\\\\",v)
+      gsub(/"/,"\\\"",v)
+      if (count > 0) printf ","
+      printf "\"%s\"", v
+      count++
+    }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      if (line ~ /^regexp:/) next
+      if (line ~ /^full:/) {
+        if (key == "domain") emit(substr(line, 6))
+        next
+      }
+      if (line ~ /^domain:/) {
+        if (key == "domain_suffix") emit(substr(line, 8))
+        next
+      }
+      if (line ~ /^keyword:/) {
+        if (key == "domain_keyword") emit(substr(line, 9))
+        next
+      }
+      if (line !~ /^[A-Za-z0-9_.-]+$/) next
+      if (key == "domain_suffix") emit(line)
+    }
+  ' "$file"
+}
+
+write_rule_set_json() {
+  input="$1"
+  output="$2"
+  tmp="$output.tmp"
+  mkdir -p "$(dirname "$output")"
+  {
+    printf '{\n  "version": 3,\n  "rules": [\n'
+    printf '    {\n      "domain": ['
+    json_array_from_list domain "$input"
+    printf '],\n      "domain_suffix": ['
+    json_array_from_list domain_suffix "$input"
+    printf '],\n      "domain_keyword": ['
+    json_array_from_list domain_keyword "$input"
+    printf ']\n    }\n'
+    printf '  ]\n}\n'
+  } >"$tmp"
+  mv "$tmp" "$output"
+}
+
+rules_update() {
+  load_config
+  [ "$rules_source" = "loyalsoldier" ] || {
+    echo "unsupported rules source: $rules_source" >&2
+    exit 1
+  }
+  command -v curl >/dev/null 2>&1 || {
+    echo "curl is required to update rules" >&2
+    exit 1
+  }
+
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+  base="${rules_source_base_url%/}"
+  curl -fsSL --connect-timeout 8 --max-time 60 "$base/direct-list.txt" -o "$tmp_dir/direct-list.txt"
+  curl -fsSL --connect-timeout 8 --max-time 60 "$base/proxy-list.txt" -o "$tmp_dir/proxy-list.txt"
+  [ -s "$tmp_dir/direct-list.txt" ] || { echo "downloaded direct list is empty" >&2; exit 1; }
+  [ -s "$tmp_dir/proxy-list.txt" ] || { echo "downloaded proxy list is empty" >&2; exit 1; }
+  write_rule_set_json "$tmp_dir/direct-list.txt" "$rules_direct_rule_set"
+  write_rule_set_json "$tmp_dir/proxy-list.txt" "$rules_proxy_rule_set"
+  echo "rules updated:"
+  rules_status
+}
+
+write_inline_domain_rule() {
+  list="$1"
+  outbound="$2"
+  domains="$(printf '%s\n' "$list" | awk '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function emit(v) {
+      gsub(/\\/,"\\\\",v)
+      gsub(/"/,"\\\"",v)
+      if (count > 0) printf ","
+      printf "\"%s\"", v
+      count++
+    }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      if (line ~ /^full:/) line = substr(line, 6)
+      else if (line ~ /^domain:/) line = substr(line, 8)
+      else if (line ~ /^\+\./) line = substr(line, 3)
+      if (line !~ /^[A-Za-z0-9_.-]+$/) next
+      emit(line)
+    }
+  ')"
+  [ -n "$domains" ] || return 0
+  printf '{ "domain_suffix": [%s], "outbound": "%s" }' "$domains" "$outbound"
+}
+
 write_dns_servers() {
   esc_local="$(printf '%s' "$dns_local_server" | json_escape)"
   esc_local_path="$(printf '%s' "$dns_local_path" | json_escape)"
@@ -426,18 +560,25 @@ write_dns_servers() {
 }
 
 write_dns_rules() {
-  if [ "$rules_mode" = "gfw" ]; then
-    printf '      { "rule_set": "gfw", "server": "remote-doh" }\n'
+  if [ "$rules_mode" = "ruleset" ]; then
+    printf '      { "rule_set": "direct", "server": "direct-dns" },\n'
+    printf '      { "rule_set": "proxy", "server": "remote-doh" }\n'
   fi
 }
 
 write_rule_sets() {
-  if [ "$rules_mode" = "gfw" ]; then
+  if [ "$rules_mode" = "ruleset" ]; then
     printf '      {\n'
     printf '        "type": "local",\n'
-    printf '        "tag": "gfw",\n'
+    printf '        "tag": "direct",\n'
     printf '        "format": "source",\n'
-    printf '        "path": "%s"\n' "$esc_rule_set"
+    printf '        "path": "%s"\n' "$esc_direct_rule_set"
+    printf '      },\n'
+    printf '      {\n'
+    printf '        "type": "local",\n'
+    printf '        "tag": "proxy",\n'
+    printf '        "format": "source",\n'
+    printf '        "path": "%s"\n' "$esc_proxy_rule_set"
     printf '      }\n'
   fi
 }
@@ -459,8 +600,13 @@ write_route_rules() {
   if [ "$rules_private_direct" = "1" ]; then
     add_rule '{ "ip_is_private": true, "outbound": "direct" }'
   fi
-  if [ "$rules_mode" = "gfw" ]; then
-    add_rule '{ "rule_set": "gfw", "outbound": "'"$rules_gfw_outbound"'" }'
+  if [ "$rules_mode" = "ruleset" ]; then
+    custom_direct_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" "direct")"
+    custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "$rules_proxy_outbound")"
+    [ -z "$custom_direct_rule" ] || add_rule "$custom_direct_rule"
+    [ -z "$custom_proxy_rule" ] || add_rule "$custom_proxy_rule"
+    add_rule '{ "rule_set": "direct", "outbound": "direct" }'
+    add_rule '{ "rule_set": "proxy", "outbound": "'"$rules_proxy_outbound"'" }'
   elif [ "$rules_mode" = "global_proxy" ]; then
     rules_default_outbound="anytls-out"
   elif [ "$rules_mode" = "direct" ]; then
@@ -477,7 +623,8 @@ generate_config() {
   esc_server="$(printf '%s' "$node_server" | json_escape)"
   esc_password="$(printf '%s' "$node_password" | json_escape)"
   esc_sni="$(printf '%s' "$node_sni" | json_escape)"
-  esc_rule_set="$(printf '%s' "$rules_gfw_rule_set" | json_escape)"
+  esc_direct_rule_set="$(printf '%s' "$rules_direct_rule_set" | json_escape)"
+  esc_proxy_rule_set="$(printf '%s' "$rules_proxy_rule_set" | json_escape)"
   tls_server_name=""
   if [ -n "$node_sni" ]; then
     tls_server_name=", \"server_name\": \"$esc_sni\""
@@ -656,6 +803,8 @@ case "$action" in
   node-list) node_list ;;
   node-use) node_use "${2:-}" ;;
   node-delete) node_delete "${2:-}" ;;
+  rules-update) rules_update ;;
+  rules-status) rules_status ;;
   logs) logs_text ;;
   -h|--help|help|"") usage ;;
   *) usage >&2; exit 2 ;;

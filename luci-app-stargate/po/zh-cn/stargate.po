@@ -313,8 +313,8 @@ msgstr "DoH 路径"
 msgid "Final resolver"
 msgstr "最终解析器"
 
-msgid "Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver."
-msgstr "推荐：直连。GFW 规则命中仍会自动使用远端；直连只控制兜底解析器。"
+msgid "Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver."
+msgstr "推荐：直连。代理规则命中仍会自动使用远端；直连只控制兜底解析器。"
 
 msgid "Remote"
 msgstr "远端"
@@ -328,11 +328,20 @@ msgstr "系统本地"
 msgid "DNS hijack"
 msgstr "DNS 劫持"
 
-msgid "GFW based routing"
-msgstr "基于 GFW 的分流"
+msgid "Use Loyalsoldier rules with small user overrides. Rules are not bundled; update them explicitly before generating config."
+msgstr "使用 Loyalsoldier 规则，并提供少量用户覆盖。规则不随包内置，需要先显式更新后再生成配置。"
 
-msgid "GFW list"
-msgstr "GFW 列表"
+msgid "Rule policy"
+msgstr "规则策略"
+
+msgid "Loyalsoldier direct/proxy rules"
+msgstr "Loyalsoldier 直连/代理规则"
+
+msgid "Recommended: use upstream direct-list and proxy-list. User direct/proxy domains are matched before upstream rules."
+msgstr "推荐：使用上游 direct-list 和 proxy-list。用户直连/代理域名优先于上游规则匹配。"
+
+msgid "Rule source"
+msgstr "规则来源"
 
 msgid "Global proxy"
 msgstr "全局代理"
@@ -340,11 +349,41 @@ msgstr "全局代理"
 msgid "Direct only"
 msgstr "仅直连"
 
-msgid "GFW rule-set path"
-msgstr "GFW 规则集路径"
+msgid "Source base URL"
+msgstr "来源基础 URL"
 
-msgid "GFW outbound"
-msgstr "GFW 出站"
+msgid "Direct rule-set path"
+msgstr "直连规则集路径"
+
+msgid "Proxy rule-set path"
+msgstr "代理规则集路径"
+
+msgid "Proxy outbound"
+msgstr "代理出站"
+
+msgid "User direct domains"
+msgstr "用户直连域名"
+
+msgid "One domain per line. These domains always go direct and take priority over upstream proxy rules."
+msgstr "每行一个域名。这些域名始终直连，并优先于上游代理规则。"
+
+msgid "User proxy domains"
+msgstr "用户代理域名"
+
+msgid "One domain per line. These domains always use the proxy outbound and take priority over upstream direct rules."
+msgstr "每行一个域名。这些域名始终使用代理出站，并优先于上游直连规则。"
+
+msgid "Rule actions"
+msgstr "规则操作"
+
+msgid "Update Loyalsoldier rules"
+msgstr "更新 Loyalsoldier 规则"
+
+msgid "Refresh status"
+msgstr "刷新状态"
+
+msgid "Rules updated"
+msgstr "规则已更新"
 
 msgid "Proxy"
 msgstr "代理"

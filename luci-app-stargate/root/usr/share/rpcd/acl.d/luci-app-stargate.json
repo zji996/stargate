@@ -9,7 +9,8 @@
       "file": {
         "/etc/stargate/config.json": [ "read" ],
         "/etc/stargate/config.json.next": [ "read" ],
-        "/usr/share/stargate/rules/gfw.json": [ "read" ]
+        "/usr/share/stargate/rules/direct.json": [ "read", "stat" ],
+        "/usr/share/stargate/rules/proxy.json": [ "read", "stat" ]
       }
     },
     "write": {
@@ -21,6 +22,8 @@
       "file": {
         "/etc/stargate/config.json": [ "write" ],
         "/etc/stargate/config.json.next": [ "write" ],
+        "/usr/share/stargate/rules/direct.json": [ "write" ],
+        "/usr/share/stargate/rules/proxy.json": [ "write" ],
         "/usr/share/stargate/stargate.sh": [ "exec" ],
         "/etc/init.d/stargate": [ "exec" ]
       }

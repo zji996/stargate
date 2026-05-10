@@ -9,7 +9,7 @@
 - Overview：较大的状态面板、本机出口连通性测试和启用状态。维护类配置不放在概览页。
 - Node：轻量节点列表、手动添加节点、通过 `anytls://` 链接添加节点、行内使用节点、弹窗编辑节点，以及本机 SOCKS/HTTP 入站。
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
-- Rules：基于 GFW rule-set 的基础分流。
+- Rules：基于 Loyalsoldier direct/proxy 列表的基础分流，并支持少量用户直连/代理域名覆盖。
 - Component Settings：日志级别、sing-box 路径、配置路径、工作目录，以及带解释的生成/检查/应用/重启维护动作。
 - Safety：备份、透明代理、防火墙、dnsmasq 开关的显式边界。
 
@@ -156,24 +156,28 @@ Overview 的 Baidu / Google / GitHub 测试用于检查路由器本机出口连�
 - `local`：系统本地解析器，作为兜底。
 - `direct-dns`：直连 DNS，默认阿里 DNS TCP 预设 `tcp://223.5.5.5`。
 - `remote-doh`：远端 DoH，默认 Cloudflare DoH 预设 `https://1.1.1.1/dns-query`，通过 `anytls-out` 出站。
-- `dns.final`：默认 `direct-dns`；GFW 规则命中的域名仍会由 DNS rule 指向 `remote-doh`。
+- `dns.final`：默认 `direct-dns`；命中代理规则的域名仍会由 DNS rule 指向 `remote-doh`。
 - `route.default_domain_resolver`：默认 `direct-dns`，用于解析出站服务器域名，避免依赖 sing-box 1.12 后的废弃行为。
 
 这对应用户希望的“tcp doh 的 dns”：直连侧优先 TCP，代理侧优先 DoH。后续可以继续扩展 DoT、HTTP/3、FakeIP 和 DNS hijack，但第一版不默认接管局域网 DNS。
 
 LuCI 页面不再要求用户手工拼协议、服务器和 DoH path。直连 DNS 与远端 DNS 均提供预设下拉，预设会完整写入 sing-box 所需的 type/server/path；选择 `Custom` 时才显示自定义传输、服务器和 path。这个设计吸收 PassWall2 的服务商预设经验，但减少高级选项默认暴露，降低 DNS 配置失效概率。
 
-## GFW 分流设计
+## 规则分流设计
 
-第一版使用 sing-box `rule_set`：
+第一版使用 sing-box `rule_set`，规则来源改为 `Loyalsoldier/v2ray-rules-dat` 的 release 文本列表：
 
-- 默认 rule-set 路径：`/usr/share/stargate/rules/gfw.json`
+- 上游直连列表：`direct-list.txt`，转换为 `/usr/share/stargate/rules/direct.json`
+- 上游代理列表：`proxy-list.txt`，转换为 `/usr/share/stargate/rules/proxy.json`
 - 格式：`source`
-- 命中 GFW rule-set 时走 `anytls-out`
+- 用户自定义直连域名：生成 inline `custom-direct` rule-set
+- 用户自定义代理域名：生成 inline `custom-proxy` rule-set
+- 匹配顺序：私有 IP 直连、用户直连、用户代理、上游直连、上游代理
 - 未命中默认 `direct`
-- 私有 IP 默认 `direct`
 
-当前 `gfw.json` 只是基础种子规则，用来建立机制。后续应增加规则更新、规则校验、source 到 binary 的编译和回滚。
+Stargate 不再内置离线 fallback 规则文件。Rules 页提供显式“更新 Loyalsoldier 规则”入口，后端下载文本列表并转换为 sing-box `source` rule-set。生成配置时如果规则文件缺失会直接失败并提示先更新规则，避免悄悄使用旧规则或空规则。
+
+自定义域名入口刻意保持简单：每行一个域名，分别放入“用户直连域名”和“用户代理域名”。这吸收 PassWall2 允许用户覆盖分流的经验，但不引入设备 ACL、端口矩阵、复杂 DNS hosts 等第一版暂不需要的配置面。
 
 ## 暂不启用的能力
 

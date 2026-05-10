@@ -42,7 +42,8 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - Overview 只保留状态和连接检测；日志级别、sing-box 路径、配置路径、工作目录、生成/检查/应用/重启等维护项放到 Component Settings（组件设置）页，并带明确操作说明。
 - 未配置当前节点时，Overview 的启用开关不可用并显示阻塞提示；组件设置里的生成/检查/应用/重启也会提示先配置节点；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
 - Node 页开始提供轻量节点列表，支持手动添加 AnyTLS、通过 `anytls://` 链接添加、编辑节点、使用节点和删除节点。新增和链接添加入口位于节点列表上方，节点编辑和“使用此节点”跟随列表行。第一版不做订阅和多协议导入。
-- DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Cloudflare DoH，`final` 默认为 `direct-dns`，GFW 命中域名仍通过 DNS 规则走 `remote-doh`。第一版仍只写 sing-box 内部 DNS，不接管 dnsmasq。
+- DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Cloudflare DoH，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。第一版仍只写 sing-box 内部 DNS，不接管 dnsmasq。
+- Rules 页改为 Loyalsoldier direct/proxy 规则体系，不再内置离线 fallback。用户需要显式更新规则，后端将 `direct-list.txt` 和 `proxy-list.txt` 转换为 sing-box `source` rule-set；用户自定义直连/代理域名通过两个简单文本框维护，并优先于上游规则。
 
 ## 当前边界
 
