@@ -27,7 +27,19 @@ msgstr ""
 msgid "Safety"
 msgstr ""
 
+msgid "Component Settings"
+msgstr ""
+
 msgid "Enable"
+msgstr ""
+
+msgid "Runtime status and local outlet checks."
+msgstr ""
+
+msgid "Manage sing-box component paths and explicit config lifecycle actions."
+msgstr ""
+
+msgid "Runtime maintenance"
 msgstr ""
 
 msgid "Log level"
@@ -60,6 +72,9 @@ msgstr ""
 msgid "Actions"
 msgstr ""
 
+msgid "Maintenance actions"
+msgstr ""
+
 msgid "Generate"
 msgstr ""
 
@@ -82,6 +97,18 @@ msgid "Restart"
 msgstr ""
 
 msgid "Restarted"
+msgstr ""
+
+msgid "Build the next sing-box config from UCI. It only writes the staging file and does not start the service."
+msgstr ""
+
+msgid "Run sing-box check against the staging config before it becomes active."
+msgstr ""
+
+msgid "Validate and replace the active config. It does not enable transparent proxy or change firewall rules."
+msgstr ""
+
+msgid "Restart only the Stargate sing-box service with the current active config."
 msgstr ""
 
 msgid "Primary node"

@@ -50,10 +50,19 @@
   "admin/services/stargate/safety": {
     "title": "Safety",
     "translate": "stargate",
-    "order": 50,
+    "order": 60,
     "action": {
       "type": "view",
       "path": "stargate/safety"
+    }
+  },
+  "admin/services/stargate/component": {
+    "title": "Component Settings",
+    "translate": "stargate",
+    "order": 50,
+    "action": {
+      "type": "view",
+      "path": "stargate/component"
     }
   }
 }

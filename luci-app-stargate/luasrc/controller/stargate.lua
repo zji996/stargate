@@ -13,7 +13,8 @@ function index()
   entry({"admin", "services", "stargate", "node"}, cbi("stargate/client/node"), _("Node"), 20).leaf = true
   entry({"admin", "services", "stargate", "dns"}, cbi("stargate/client/dns"), _("DNS"), 30).leaf = true
   entry({"admin", "services", "stargate", "rules"}, cbi("stargate/client/rules"), _("Rules"), 40).leaf = true
-  entry({"admin", "services", "stargate", "safety"}, cbi("stargate/client/safety"), _("Safety"), 50).leaf = true
+  entry({"admin", "services", "stargate", "component"}, cbi("stargate/client/component"), _("Component Settings"), 50).leaf = true
+  entry({"admin", "services", "stargate", "safety"}, cbi("stargate/client/safety"), _("Safety"), 60).leaf = true
 
   local probe = entry({"admin", "services", "stargate", "connect_status"}, call("connect_status"))
   probe.leaf = true

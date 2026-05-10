@@ -28,8 +28,20 @@ msgstr "规则"
 msgid "Safety"
 msgstr "安全"
 
+msgid "Component Settings"
+msgstr "组件设置"
+
 msgid "Enable"
 msgstr "启用"
+
+msgid "Runtime status and local outlet checks."
+msgstr "运行状态和本机出口检测。"
+
+msgid "Manage sing-box component paths and explicit config lifecycle actions."
+msgstr "管理 sing-box 组件路径和显式配置生命周期操作。"
+
+msgid "Runtime maintenance"
+msgstr "运行维护"
 
 msgid "Log level"
 msgstr "日志级别"
@@ -61,6 +73,9 @@ msgstr "未知"
 msgid "Actions"
 msgstr "操作"
 
+msgid "Maintenance actions"
+msgstr "维护操作"
+
 msgid "Generate"
 msgstr "生成"
 
@@ -84,6 +99,18 @@ msgstr "重启"
 
 msgid "Restarted"
 msgstr "已重启"
+
+msgid "Build the next sing-box config from UCI. It only writes the staging file and does not start the service."
+msgstr "从 UCI 生成下一份 sing-box 配置，只写入待校验文件，不启动服务。"
+
+msgid "Run sing-box check against the staging config before it becomes active."
+msgstr "对待校验配置运行 sing-box check，确认通过后再作为正式配置使用。"
+
+msgid "Validate and replace the active config. It does not enable transparent proxy or change firewall rules."
+msgstr "校验并替换当前正式配置，不启用透明代理，也不改防火墙规则。"
+
+msgid "Restart only the Stargate sing-box service with the current active config."
+msgstr "仅使用当前正式配置重启 Stargate 的 sing-box 服务。"
 
 msgid "Primary node"
 msgstr "主节点"

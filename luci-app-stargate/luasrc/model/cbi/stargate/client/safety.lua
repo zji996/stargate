@@ -1,4 +1,5 @@
 local sys = require "luci.sys"
+local util = require "luci.util"
 
 m = Map("stargate", translate("Safety"))
 
@@ -28,7 +29,7 @@ function diag.cfgvalue()
   if logs == "" then
     logs = translate("No logs")
   end
-  return "<pre style=\"white-space: pre-wrap\">" .. luci.util.pcdata(logs) .. "</pre>"
+  return "<pre style=\"white-space: pre-wrap\">" .. util.pcdata(logs) .. "</pre>"
 end
 
 return m

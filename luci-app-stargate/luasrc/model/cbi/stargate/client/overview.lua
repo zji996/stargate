@@ -1,17 +1,9 @@
 local sys = require "luci.sys"
-local http = require "luci.http"
 local util = require "luci.util"
 local dispatcher = require "luci.dispatcher"
 
 m = Map("stargate", translate("Stargate"))
-m.description = translate("A conservative sing-box manager for OpenWrt. Generate and check the config before starting the service.")
-
-local action = http.formvalue("stargate_action")
-if action == "generate" or action == "check" or action == "apply" then
-  m.message = "<pre>" .. util.pcdata(sys.exec("/usr/share/stargate/stargate.sh " .. action .. " 2>&1")) .. "</pre>"
-elseif action == "restart" then
-  m.message = "<pre>" .. util.pcdata(sys.exec("/etc/init.d/stargate restart 2>&1")) .. "</pre>"
-end
+m.description = translate("Runtime status and local outlet checks.")
 
 local function trim(value)
   return (value or ""):gsub("%s+$", "")
@@ -117,36 +109,5 @@ end
 
 enabled = s:option(Flag, "enabled", translate("Enable"))
 enabled.rmempty = false
-
-log_level = s:option(ListValue, "log_level", translate("Log level"))
-log_level:value("debug", "debug")
-log_level:value("info", "info")
-log_level:value("warn", "warn")
-log_level:value("error", "error")
-log_level.default = "warn"
-
-singbox_bin = s:option(Value, "singbox_bin", translate("sing-box binary"))
-singbox_bin.default = "/usr/bin/sing-box"
-
-config_file = s:option(Value, "config_file", translate("Generated config"))
-config_file.default = "/etc/stargate/config.json"
-
-work_dir = s:option(Value, "work_dir", translate("Work directory"))
-work_dir.default = "/etc/stargate"
-
-actions = s:option(DummyValue, "_actions", translate("Actions"))
-actions.rawhtml = true
-function actions.cfgvalue()
-  local base = dispatcher.build_url("admin", "services", "stargate", "overview")
-  return table.concat({
-    '<input class="cbi-button cbi-button-apply" type="button" value="' .. translate("Generate") .. '" onclick="location.href=\'' .. base .. '?stargate_action=generate\'" />',
-    ' ',
-    '<input class="cbi-button cbi-button-apply" type="button" value="' .. translate("Check") .. '" onclick="location.href=\'' .. base .. '?stargate_action=check\'" />',
-    ' ',
-    '<input class="cbi-button cbi-button-apply" type="button" value="' .. translate("Apply") .. '" onclick="location.href=\'' .. base .. '?stargate_action=apply\'" />',
-    ' ',
-    '<input class="cbi-button cbi-button-reload" type="button" value="' .. translate("Restart") .. '" onclick="location.href=\'' .. base .. '?stargate_action=restart\'" />'
-  })
-end
 
 return m

@@ -2,7 +2,6 @@
 'require view';
 'require form';
 'require fs';
-'require ui';
 'require uci';
 
 return view.extend({
@@ -56,62 +55,6 @@ return view.extend({
 
     var enabled = s.option(form.Flag, 'enabled', _('Enable'));
     enabled.rmempty = false;
-
-    var logLevel = s.option(form.ListValue, 'log_level', _('Log level'));
-    logLevel.value('debug', 'debug');
-    logLevel.value('info', 'info');
-    logLevel.value('warn', 'warn');
-    logLevel.value('error', 'error');
-    logLevel.default = 'warn';
-
-    var configFile = s.option(form.Value, 'config_file', _('Generated config'));
-    configFile.default = '/etc/stargate/config.json';
-
-    var bin = s.option(form.Value, 'singbox_bin', _('sing-box binary'));
-    bin.default = '/usr/bin/sing-box';
-
-    var actions = s.option(form.DummyValue, '_actions', _('Actions'));
-    actions.rawhtml = true;
-    actions.cfgvalue = function() {
-      var wrap = E('div', { 'class': 'stargate-actions' }, [
-        E('button', {
-          'class': 'btn cbi-button cbi-button-neutral',
-          'click': ui.createHandlerFn(this, function() {
-            return fs.exec('/usr/share/stargate/stargate.sh', [ 'generate' ])
-              .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Generated'))); })
-              .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
-          })
-        }, [ _('Generate') ]),
-        ' ',
-        E('button', {
-          'class': 'btn cbi-button cbi-button-neutral',
-          'click': ui.createHandlerFn(this, function() {
-            return fs.exec('/usr/share/stargate/stargate.sh', [ 'check' ])
-              .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Check passed'))); })
-              .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
-          })
-        }, [ _('Check') ]),
-        ' ',
-        E('button', {
-          'class': 'btn cbi-button cbi-button-apply',
-          'click': ui.createHandlerFn(this, function() {
-            return fs.exec('/usr/share/stargate/stargate.sh', [ 'apply' ])
-              .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Applied'))); })
-              .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
-          })
-        }, [ _('Apply') ]),
-        ' ',
-        E('button', {
-          'class': 'btn cbi-button cbi-button-action',
-          'click': ui.createHandlerFn(this, function() {
-            return fs.exec('/etc/init.d/stargate', [ 'restart' ])
-              .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Restarted'))); })
-              .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
-          })
-        }, [ _('Restart') ])
-      ]);
-      return wrap;
-    };
 
     return m.render();
   }
