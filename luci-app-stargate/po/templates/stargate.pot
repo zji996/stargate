@@ -87,6 +87,15 @@ msgstr ""
 msgid "Primary node"
 msgstr ""
 
+msgid "Active node"
+msgstr ""
+
+msgid "Manage a small AnyTLS node list. Use a node to copy it into the active sing-box config."
+msgstr ""
+
+msgid "Node actions"
+msgstr ""
+
 msgid "Type"
 msgstr ""
 
@@ -106,6 +115,54 @@ msgid "SNI"
 msgstr ""
 
 msgid "Allow insecure TLS"
+msgstr ""
+
+msgid "Add node"
+msgstr ""
+
+msgid "Edit node"
+msgstr ""
+
+msgid "Add"
+msgstr ""
+
+msgid "Save"
+msgstr ""
+
+msgid "Cancel"
+msgstr ""
+
+msgid "Unset"
+msgstr ""
+
+msgid "Add node by link"
+msgstr ""
+
+msgid "Add by link"
+msgstr ""
+
+msgid "AnyTLS link"
+msgstr ""
+
+msgid "Node list"
+msgstr ""
+
+msgid "Active"
+msgstr ""
+
+msgid "Insecure"
+msgstr ""
+
+msgid "TLS verify"
+msgstr ""
+
+msgid "Use"
+msgstr ""
+
+msgid "Delete"
+msgstr ""
+
+msgid "No nodes yet"
 msgstr ""
 
 msgid "Local inbound"

@@ -6,7 +6,9 @@ return view.extend({
   render: function() {
     var m = new form.Map('stargate', _('Node'));
 
-    var s = m.section(form.NamedSection, 'node', 'node', _('Primary node'));
+    m.description = _('Manage a small AnyTLS node list. Use a node to copy it into the active sing-box config.');
+
+    var s = m.section(form.NamedSection, 'node', 'node', _('Active node'));
     s.anonymous = true;
 
     var type = s.option(form.ListValue, 'type', _('Type'));
