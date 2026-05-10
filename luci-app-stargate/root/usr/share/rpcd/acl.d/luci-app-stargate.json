@@ -1,0 +1,29 @@
+{
+  "luci-app-stargate": {
+    "description": "Grant access to Stargate",
+    "read": {
+      "uci": [ "stargate" ],
+      "ubus": {
+        "file": [ "read", "stat" ]
+      },
+      "file": {
+        "/etc/stargate/config.json": [ "read" ],
+        "/etc/stargate/config.json.next": [ "read" ],
+        "/usr/share/stargate/rules/gfw.json": [ "read" ]
+      }
+    },
+    "write": {
+      "uci": [ "stargate" ],
+      "ubus": {
+        "file": [ "exec", "write" ],
+        "uci": [ "add", "apply", "confirm", "delete", "set", "commit" ]
+      },
+      "file": {
+        "/etc/stargate/config.json": [ "write" ],
+        "/etc/stargate/config.json.next": [ "write" ],
+        "/usr/share/stargate/stargate.sh": [ "exec" ],
+        "/etc/init.d/stargate": [ "exec" ]
+      }
+    }
+  }
+}

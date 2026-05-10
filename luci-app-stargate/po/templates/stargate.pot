@@ -1,0 +1,253 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-stargate\n"
+"POT-Creation-Date: 2026-05-10 00:00+0000\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Stargate"
+msgstr ""
+
+msgid "Overview"
+msgstr ""
+
+msgid "Node"
+msgstr ""
+
+msgid "DNS"
+msgstr ""
+
+msgid "Rules"
+msgstr ""
+
+msgid "Safety"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Log level"
+msgstr ""
+
+msgid "Generated config"
+msgstr ""
+
+msgid "sing-box binary"
+msgstr ""
+
+msgid "Status"
+msgstr ""
+
+msgid "sing-box: "
+msgstr ""
+
+msgid "service: "
+msgstr ""
+
+msgid "config: "
+msgstr ""
+
+msgid "not detected"
+msgstr ""
+
+msgid "unknown"
+msgstr ""
+
+msgid "Actions"
+msgstr ""
+
+msgid "Generate"
+msgstr ""
+
+msgid "Generated"
+msgstr ""
+
+msgid "Check"
+msgstr ""
+
+msgid "Check passed"
+msgstr ""
+
+msgid "Apply"
+msgstr ""
+
+msgid "Applied"
+msgstr ""
+
+msgid "Restart"
+msgstr ""
+
+msgid "Restarted"
+msgstr ""
+
+msgid "Primary node"
+msgstr ""
+
+msgid "Type"
+msgstr ""
+
+msgid "Label"
+msgstr ""
+
+msgid "Server"
+msgstr ""
+
+msgid "Port"
+msgstr ""
+
+msgid "Password"
+msgstr ""
+
+msgid "SNI"
+msgstr ""
+
+msgid "Allow insecure TLS"
+msgstr ""
+
+msgid "Local inbound"
+msgstr ""
+
+msgid "SOCKS listen"
+msgstr ""
+
+msgid "SOCKS port"
+msgstr ""
+
+msgid "HTTP listen"
+msgstr ""
+
+msgid "HTTP port"
+msgstr ""
+
+msgid "DNS policy"
+msgstr ""
+
+msgid "Mode"
+msgstr ""
+
+msgid "TCP direct + DoH remote"
+msgstr ""
+
+msgid "Strategy"
+msgstr ""
+
+msgid "Direct DNS transport"
+msgstr ""
+
+msgid "Direct DNS server"
+msgstr ""
+
+msgid "Remote DNS transport"
+msgstr ""
+
+msgid "Remote DNS server"
+msgstr ""
+
+msgid "DoH path"
+msgstr ""
+
+msgid "Final resolver"
+msgstr ""
+
+msgid "Remote"
+msgstr ""
+
+msgid "Direct"
+msgstr ""
+
+msgid "System local"
+msgstr ""
+
+msgid "DNS hijack"
+msgstr ""
+
+msgid "GFW based routing"
+msgstr ""
+
+msgid "GFW list"
+msgstr ""
+
+msgid "Global proxy"
+msgstr ""
+
+msgid "Direct only"
+msgstr ""
+
+msgid "GFW rule-set path"
+msgstr ""
+
+msgid "GFW outbound"
+msgstr ""
+
+msgid "Proxy"
+msgstr ""
+
+msgid "Default outbound"
+msgstr ""
+
+msgid "Private IP direct"
+msgstr ""
+
+msgid "Block QUIC"
+msgstr ""
+
+msgid "System changes"
+msgstr ""
+
+msgid "Backup before apply"
+msgstr ""
+
+msgid "Transparent proxy"
+msgstr ""
+
+msgid "Manage firewall"
+msgstr ""
+
+msgid "Manage dnsmasq"
+msgstr ""
+
+msgid "Diagnostics"
+msgstr ""
+
+msgid "Recent logs"
+msgstr ""
+
+msgid "No logs"
+msgstr ""
+
+msgid "Show logs"
+msgstr ""
+
+msgid "Runtime"
+msgstr ""
+
+msgid "Local proxy"
+msgstr ""
+
+msgid "AnyTLS primary"
+msgstr ""
+
+msgid "Baidu Connection"
+msgstr ""
+
+msgid "Google Connection"
+msgstr ""
+
+msgid "GitHub Connection"
+msgstr ""
+
+msgid "Touch Check"
+msgstr ""
+
+msgid "Direct local outlet"
+msgstr ""
+
+msgid "Check..."
+msgstr ""
+
+msgid "Problem detected!"
+msgstr ""

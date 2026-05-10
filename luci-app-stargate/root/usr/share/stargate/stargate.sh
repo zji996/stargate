@@ -1,0 +1,335 @@
+#!/bin/sh
+set -eu
+
+app="stargate"
+work_dir="/etc/stargate"
+config_file="$work_dir/config.json"
+next_file="$config_file.next"
+backup_file="$config_file.bak"
+singbox_bin="/usr/bin/sing-box"
+
+usage() {
+  cat <<'USAGE'
+Usage:
+  /usr/share/stargate/stargate.sh generate
+  /usr/share/stargate/stargate.sh check
+  /usr/share/stargate/stargate.sh apply
+  /usr/share/stargate/stargate.sh status
+  /usr/share/stargate/stargate.sh probe baidu|google|github
+  /usr/share/stargate/stargate.sh logs
+USAGE
+}
+
+json_escape() {
+  sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+bool_json() {
+  case "${1:-0}" in
+    1|true|TRUE|yes|on) printf true ;;
+    *) printf false ;;
+  esac
+}
+
+uci_get() {
+  if [ -n "${UCI_CONFIG_DIR:-}" ]; then
+    uci -q -c "$UCI_CONFIG_DIR" get "$app.$1.$2" 2>/dev/null || printf '%s' "$3"
+  else
+    uci -q get "$app.$1.$2" 2>/dev/null || printf '%s' "$3"
+  fi
+}
+
+load_config() {
+  work_dir="$(uci_get global work_dir "$work_dir")"
+  config_file="$(uci_get global config_file "$config_file")"
+  next_file="$config_file.next"
+  backup_file="$config_file.bak"
+  singbox_bin="$(uci_get global singbox_bin "$singbox_bin")"
+
+  log_level="$(uci_get global log_level warn)"
+  socks_listen="$(uci_get inbound socks_listen 127.0.0.1)"
+  socks_port="$(uci_get inbound socks_port 10808)"
+  http_listen="$(uci_get inbound http_listen 127.0.0.1)"
+  http_port="$(uci_get inbound http_port 10809)"
+
+  node_type="$(uci_get node type anytls)"
+  node_server="$(uci_get node server '')"
+  node_port="$(uci_get node server_port 443)"
+  node_password="$(uci_get node password '')"
+  node_sni="$(uci_get node sni '')"
+  node_insecure="$(uci_get node insecure 1)"
+
+  dns_mode="$(uci_get dns mode tcp_doh)"
+  dns_final="$(uci_get dns final remote-doh)"
+  dns_strategy="$(uci_get dns strategy prefer_ipv4)"
+  dns_local_server="$(uci_get dns local_server 223.5.5.5)"
+  dns_local_type="$(uci_get dns local_type tcp)"
+  dns_remote_server="$(uci_get dns remote_server 1.1.1.1)"
+  dns_remote_type="$(uci_get dns remote_type https)"
+  dns_remote_path="$(uci_get dns remote_path /dns-query)"
+  dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
+
+  rules_mode="$(uci_get rules mode gfw)"
+  rules_default_outbound="$(uci_get rules default_outbound direct)"
+  rules_gfw_outbound="$(uci_get rules gfw_outbound anytls-out)"
+  rules_gfw_rule_set="$(uci_get rules gfw_rule_set /usr/share/stargate/rules/gfw.json)"
+  rules_private_direct="$(uci_get rules private_direct 1)"
+  rules_block_quic="$(uci_get rules block_quic 0)"
+  backup_on_apply="$(uci_get safety backup_on_apply 1)"
+}
+
+validate_config() {
+  [ "$node_type" = "anytls" ] || {
+    echo "only anytls node is supported in this version" >&2
+    exit 1
+  }
+  [ -n "$node_server" ] || {
+    echo "node server is required" >&2
+    exit 1
+  }
+  [ -n "$node_password" ] || {
+    echo "node password is required" >&2
+    exit 1
+  }
+  case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
+  case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
+}
+
+write_dns_servers() {
+  esc_local="$(printf '%s' "$dns_local_server" | json_escape)"
+  esc_remote="$(printf '%s' "$dns_remote_server" | json_escape)"
+  esc_path="$(printf '%s' "$dns_remote_path" | json_escape)"
+  esc_detour="$(printf '%s' "$dns_remote_detour" | json_escape)"
+
+  printf '      { "tag": "local", "type": "local" },\n'
+  printf '      { "tag": "direct-dns", "type": "%s", "server": "%s" },\n' "$dns_local_type" "$esc_local"
+  if [ "$dns_remote_type" = "https" ]; then
+    printf '      { "tag": "remote-doh", "type": "https", "server": "%s", "path": "%s", "detour": "%s" }\n' "$esc_remote" "$esc_path" "$esc_detour"
+  else
+    printf '      { "tag": "remote-doh", "type": "%s", "server": "%s", "detour": "%s" }\n' "$dns_remote_type" "$esc_remote" "$esc_detour"
+  fi
+}
+
+write_dns_rules() {
+  if [ "$rules_mode" = "gfw" ]; then
+    printf '      { "rule_set": "gfw", "server": "remote-doh" }\n'
+  fi
+}
+
+write_rule_sets() {
+  if [ "$rules_mode" = "gfw" ]; then
+    printf '      {\n'
+    printf '        "type": "local",\n'
+    printf '        "tag": "gfw",\n'
+    printf '        "format": "source",\n'
+    printf '        "path": "%s"\n' "$esc_rule_set"
+    printf '      }\n'
+  fi
+}
+
+write_route_rules() {
+  first=1
+  add_rule() {
+    if [ "$first" = 1 ]; then
+      first=0
+    else
+      printf ',\n'
+    fi
+    printf '      %s' "$1"
+  }
+
+  if [ "$rules_block_quic" = "1" ]; then
+    add_rule '{ "network": "udp", "port": 443, "action": "reject" }'
+  fi
+  if [ "$rules_private_direct" = "1" ]; then
+    add_rule '{ "ip_is_private": true, "outbound": "direct" }'
+  fi
+  if [ "$rules_mode" = "gfw" ]; then
+    add_rule '{ "rule_set": "gfw", "outbound": "'"$rules_gfw_outbound"'" }'
+  elif [ "$rules_mode" = "global_proxy" ]; then
+    rules_default_outbound="anytls-out"
+  elif [ "$rules_mode" = "direct" ]; then
+    rules_default_outbound="direct"
+  fi
+  printf '\n'
+}
+
+generate_config() {
+  load_config
+  validate_config
+  mkdir -p "$work_dir"
+
+  esc_server="$(printf '%s' "$node_server" | json_escape)"
+  esc_password="$(printf '%s' "$node_password" | json_escape)"
+  esc_sni="$(printf '%s' "$node_sni" | json_escape)"
+  esc_rule_set="$(printf '%s' "$rules_gfw_rule_set" | json_escape)"
+  tls_server_name=""
+  if [ -n "$node_sni" ]; then
+    tls_server_name=", \"server_name\": \"$esc_sni\""
+  fi
+
+  {
+    cat <<EOF
+{
+  "log": {
+    "level": "$log_level",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+EOF
+    write_dns_servers
+    cat <<EOF
+    ],
+    "rules": [
+EOF
+    write_dns_rules
+    cat <<EOF
+    ],
+    "final": "$dns_final",
+    "strategy": "$dns_strategy",
+    "independent_cache": true
+  },
+  "inbounds": [
+    {
+      "type": "socks",
+      "tag": "socks-in",
+      "listen": "$socks_listen",
+      "listen_port": $socks_port
+    },
+    {
+      "type": "http",
+      "tag": "http-in",
+      "listen": "$http_listen",
+      "listen_port": $http_port
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "anytls",
+      "tag": "anytls-out",
+      "server": "$esc_server",
+      "server_port": $node_port,
+      "password": "$esc_password",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
+      "tls": {
+        "enabled": true,
+        "insecure": $(bool_json "$node_insecure")$tls_server_name
+      }
+    },
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" }
+  ],
+  "route": {
+    "default_domain_resolver": "direct-dns",
+    "rule_set": [
+EOF
+    write_rule_sets
+    cat <<EOF
+    ],
+    "rules": [
+EOF
+    write_route_rules
+    cat <<EOF
+    ],
+    "final": "$rules_default_outbound"
+  }
+}
+EOF
+  } >"$next_file"
+  echo "$next_file"
+}
+
+check_next() {
+  [ -x "$singbox_bin" ] || {
+    echo "sing-box not found: $singbox_bin" >&2
+    exit 1
+  }
+  "$singbox_bin" check -c "$next_file"
+}
+
+apply_config() {
+  generated="$(generate_config)"
+  next_file="$generated"
+  check_next
+  if [ "$backup_on_apply" = "1" ] && [ -f "$config_file" ]; then
+    cp -a "$config_file" "$backup_file"
+  fi
+  mv "$next_file" "$config_file"
+  echo "config applied: $config_file"
+}
+
+status_json() {
+  load_config
+  service_state="unknown"
+  if [ -x /etc/init.d/stargate ]; then
+    service_state="$(/etc/init.d/stargate status 2>&1 || true)"
+  fi
+  singbox_version="$("$singbox_bin" version 2>/dev/null | head -1 || true)"
+  printf '{'
+  printf '"enabled":"%s",' "$(uci_get global enabled 0)"
+  printf '"config_file":"%s",' "$config_file"
+  printf '"service":%s,' "$(printf '%s' "$service_state" | json_escape | sed 's/^/"/;s/$/"/')"
+  printf '"singbox":%s' "$(printf '%s' "$singbox_version" | json_escape | sed 's/^/"/;s/$/"/')"
+  printf '}\n'
+}
+
+probe_url() {
+  load_config
+  target="${1:-}"
+  case "$target" in
+    baidu)
+      name="Baidu"
+      url="https://www.baidu.com/"
+      ;;
+    google)
+      name="Google"
+      url="https://www.google.com/generate_204"
+      ;;
+    github)
+      name="GitHub"
+      url="https://github.com/"
+      ;;
+    *)
+      echo "unknown probe target: $target" >&2
+      exit 2
+      ;;
+  esac
+
+  if ! command -v curl >/dev/null 2>&1; then
+    echo "$name curl missing"
+    exit 1
+  fi
+
+  result="$(curl -L -sS -o /dev/null \
+    --connect-timeout 5 \
+    --max-time 10 \
+    -w '%{http_code} %{time_total}' \
+    "$url" 2>&1)" || {
+      echo "$name failed: $result"
+      exit 1
+    }
+
+  code="${result%% *}"
+  total="${result##* }"
+  ms="$(awk "BEGIN { printf \"%d\", $total * 1000 }" 2>/dev/null || printf '?')"
+  echo "$name HTTP $code ${ms}ms"
+}
+
+logs_text() {
+  logread -e stargate -e sing-box 2>/dev/null | tail -80 || true
+}
+
+action="${1:-}"
+case "$action" in
+  generate) generate_config ;;
+  check) generated="$(generate_config)"; next_file="$generated"; check_next ;;
+  apply) apply_config ;;
+  status) status_json ;;
+  probe) probe_url "${2:-}" ;;
+  logs) logs_text ;;
+  -h|--help|help|"") usage ;;
+  *) usage >&2; exit 2 ;;
+esac

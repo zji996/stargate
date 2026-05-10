@@ -1,0 +1,254 @@
+msgid ""
+msgstr ""
+"Project-Id-Version: luci-app-stargate\n"
+"POT-Creation-Date: 2026-05-10 00:00+0000\n"
+"PO-Revision-Date: 2026-05-10 00:00+0000\n"
+"Last-Translator: Stargate Contributors\n"
+"Language-Team: Chinese Simplified\n"
+"Language: zh_CN\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "Stargate"
+msgstr "Stargate"
+
+msgid "Overview"
+msgstr "概览"
+
+msgid "Node"
+msgstr "节点"
+
+msgid "DNS"
+msgstr "DNS"
+
+msgid "Rules"
+msgstr "规则"
+
+msgid "Safety"
+msgstr "安全"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Log level"
+msgstr "日志级别"
+
+msgid "Generated config"
+msgstr "生成配置"
+
+msgid "sing-box binary"
+msgstr "sing-box 可执行文件"
+
+msgid "Status"
+msgstr "状态"
+
+msgid "sing-box: "
+msgstr "sing-box："
+
+msgid "service: "
+msgstr "服务："
+
+msgid "config: "
+msgstr "配置："
+
+msgid "not detected"
+msgstr "未检测到"
+
+msgid "unknown"
+msgstr "未知"
+
+msgid "Actions"
+msgstr "操作"
+
+msgid "Generate"
+msgstr "生成"
+
+msgid "Generated"
+msgstr "已生成"
+
+msgid "Check"
+msgstr "检查"
+
+msgid "Check passed"
+msgstr "检查通过"
+
+msgid "Apply"
+msgstr "应用"
+
+msgid "Applied"
+msgstr "已应用"
+
+msgid "Restart"
+msgstr "重启"
+
+msgid "Restarted"
+msgstr "已重启"
+
+msgid "Primary node"
+msgstr "主节点"
+
+msgid "Type"
+msgstr "类型"
+
+msgid "Label"
+msgstr "标签"
+
+msgid "Server"
+msgstr "服务器"
+
+msgid "Port"
+msgstr "端口"
+
+msgid "Password"
+msgstr "密码"
+
+msgid "SNI"
+msgstr "SNI"
+
+msgid "Allow insecure TLS"
+msgstr "允许不安全 TLS"
+
+msgid "Local inbound"
+msgstr "本机入站"
+
+msgid "SOCKS listen"
+msgstr "SOCKS 监听地址"
+
+msgid "SOCKS port"
+msgstr "SOCKS 端口"
+
+msgid "HTTP listen"
+msgstr "HTTP 监听地址"
+
+msgid "HTTP port"
+msgstr "HTTP 端口"
+
+msgid "DNS policy"
+msgstr "DNS 策略"
+
+msgid "Mode"
+msgstr "模式"
+
+msgid "TCP direct + DoH remote"
+msgstr "直连 TCP + 远端 DoH"
+
+msgid "Strategy"
+msgstr "策略"
+
+msgid "Direct DNS transport"
+msgstr "直连 DNS 传输"
+
+msgid "Direct DNS server"
+msgstr "直连 DNS 服务器"
+
+msgid "Remote DNS transport"
+msgstr "远端 DNS 传输"
+
+msgid "Remote DNS server"
+msgstr "远端 DNS 服务器"
+
+msgid "DoH path"
+msgstr "DoH 路径"
+
+msgid "Final resolver"
+msgstr "最终解析器"
+
+msgid "Remote"
+msgstr "远端"
+
+msgid "Direct"
+msgstr "直连"
+
+msgid "System local"
+msgstr "系统本地"
+
+msgid "DNS hijack"
+msgstr "DNS 劫持"
+
+msgid "GFW based routing"
+msgstr "基于 GFW 的分流"
+
+msgid "GFW list"
+msgstr "GFW 列表"
+
+msgid "Global proxy"
+msgstr "全局代理"
+
+msgid "Direct only"
+msgstr "仅直连"
+
+msgid "GFW rule-set path"
+msgstr "GFW 规则集路径"
+
+msgid "GFW outbound"
+msgstr "GFW 出站"
+
+msgid "Proxy"
+msgstr "代理"
+
+msgid "Default outbound"
+msgstr "默认出站"
+
+msgid "Private IP direct"
+msgstr "私有 IP 直连"
+
+msgid "Block QUIC"
+msgstr "阻断 QUIC"
+
+msgid "System changes"
+msgstr "系统改动"
+
+msgid "Backup before apply"
+msgstr "应用前备份"
+
+msgid "Transparent proxy"
+msgstr "透明代理"
+
+msgid "Manage firewall"
+msgstr "管理防火墙"
+
+msgid "Manage dnsmasq"
+msgstr "管理 dnsmasq"
+
+msgid "Diagnostics"
+msgstr "诊断"
+
+msgid "Recent logs"
+msgstr "最近日志"
+
+msgid "No logs"
+msgstr "没有日志"
+
+msgid "Show logs"
+msgstr "显示日志"
+
+msgid "Runtime"
+msgstr "运行状态"
+
+msgid "Local proxy"
+msgstr "本机代理"
+
+msgid "AnyTLS primary"
+msgstr "AnyTLS 主节点"
+
+msgid "Baidu Connection"
+msgstr "百度连接"
+
+msgid "Google Connection"
+msgstr "谷歌连接"
+
+msgid "GitHub Connection"
+msgstr "GitHub 连接"
+
+msgid "Touch Check"
+msgstr "点击检测"
+
+msgid "Direct local outlet"
+msgstr "本机直连出口"
+
+msgid "Check..."
+msgstr "检测中..."
+
+msgid "Problem detected!"
+msgstr "检测异常"
