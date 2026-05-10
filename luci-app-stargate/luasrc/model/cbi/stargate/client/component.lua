@@ -19,7 +19,7 @@ m = Map("stargate", ui_text("Component Settings", "组件设置"))
 m.description = ui_text("Manage sing-box component paths and explicit config lifecycle actions.", "管理 sing-box 组件路径和显式配置生命周期操作。")
 
 local action = http.formvalue("stargate_action")
-if action == "generate" or action == "check" or action == "apply" then
+if action == "generate" or action == "check" or action == "apply" or action == "rollback" then
   m.message = "<pre>" .. util.pcdata(sys.exec("/usr/share/stargate/stargate.sh " .. action .. " 2>&1")) .. "</pre>"
 elseif action == "restart" then
   m.message = "<pre>" .. util.pcdata(sys.exec("/etc/init.d/stargate restart 2>&1")) .. "</pre>"
@@ -49,28 +49,37 @@ actions.rawhtml = true
 function actions.cfgvalue()
   local base = dispatcher.build_url("admin", "services", "stargate", "component")
   local node_ready = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null")) ~= "" and trim(sys.exec("uci -q get stargate.node.password 2>/dev/null")) ~= ""
-  local disabled = node_ready and "" or " disabled"
   local blocked_note = ui_text("Blocked until an active node is configured on the Node page.", "需要先在节点页配置当前节点后才能执行。")
   local rows = {
     {
       "generate",
       translate("Generate"),
-      ui_text("Build the next sing-box config from UCI. It only writes the staging file and does not start the service.", "从 UCI 生成下一份 sing-box 配置，只写入待校验文件，不启动服务。")
+      ui_text("Build the next sing-box config from UCI. It only writes the staging file and does not start the service.", "从 UCI 生成下一份 sing-box 配置，只写入待校验文件，不启动服务。"),
+      true
     },
     {
       "check",
       translate("Check"),
-      ui_text("Run sing-box check against the staging config before it becomes active.", "对待校验配置运行 sing-box check，确认通过后再作为正式配置使用。")
+      ui_text("Run sing-box check against the staging config before it becomes active.", "对待校验配置运行 sing-box check，确认通过后再作为正式配置使用。"),
+      true
     },
     {
       "apply",
       translate("Apply"),
-      ui_text("Validate and replace the active config. It does not enable transparent proxy or change firewall rules.", "校验并替换当前正式配置，不启用透明代理，也不改防火墙规则。")
+      ui_text("Validate and replace the active config. It does not enable transparent proxy or change firewall rules.", "校验并替换当前正式配置，不启用透明代理，也不改防火墙规则。"),
+      true
     },
     {
       "restart",
       translate("Restart"),
-      ui_text("Restart only the Stargate sing-box service with the current active config.", "仅使用当前正式配置重启 Stargate 的 sing-box 服务。")
+      ui_text("Restart only the Stargate sing-box service with the current active config.", "仅使用当前正式配置重启 Stargate 的 sing-box 服务。"),
+      true
+    },
+    {
+      "rollback",
+      ui_text("Rollback", "回滚"),
+      ui_text("Restore the last backup config created before Apply. If Stargate is running, it restarts with the restored config.", "恢复上一次应用前备份的配置。如果 Stargate 正在运行，会用恢复后的配置重启。"),
+      false
     }
   }
   local html = {
@@ -83,9 +92,10 @@ function actions.cfgvalue()
     '<div class="stargate-component-actions">'
   }
   for _, row in ipairs(rows) do
+    local disabled = (row[4] and not node_ready) and " disabled" or ""
     html[#html + 1] = '<div class="stargate-component-action">'
     html[#html + 1] = '<input class="cbi-button cbi-button-apply" type="button" value="' .. row[2] .. '"' .. disabled .. ' onclick="location.href=\'' .. base .. '?stargate_action=' .. row[1] .. '\'" />'
-    html[#html + 1] = '<div class="stargate-component-note">' .. row[3] .. (node_ready and "" or '<br /><strong>' .. blocked_note .. '</strong>') .. '</div>'
+    html[#html + 1] = '<div class="stargate-component-note">' .. row[3] .. ((row[4] and not node_ready) and ('<br /><strong>' .. blocked_note .. '</strong>') or "") .. '</div>'
     html[#html + 1] = '</div>'
   end
   html[#html + 1] = '</div>'

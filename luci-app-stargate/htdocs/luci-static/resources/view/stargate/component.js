@@ -46,20 +46,21 @@ return view.extend({
       var blocked = !status.node_ready;
       var blockedNote = _('Blocked until an active node is configured on the Node page.');
 
-      function actionButton(label, note, command, args, cls) {
+      function actionButton(label, note, command, args, cls, requiresNode) {
+        var disabled = !!requiresNode && blocked;
         return E('div', { 'class': 'stargate-component-action' }, [
           E('button', {
             'class': 'btn cbi-button ' + (cls || 'cbi-button-neutral'),
-            'disabled': blocked ? '' : null,
+            'disabled': disabled ? '' : null,
             'click': ui.createHandlerFn(this, function() {
-              if (blocked)
+              if (disabled)
                 return;
               return fs.exec(command, args)
                 .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || label)); })
                 .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
             })
           }, [ label ]),
-          E('div', { 'class': 'stargate-component-note' }, blocked ? [ note, E('br'), E('strong', {}, blockedNote) ] : note)
+          E('div', { 'class': 'stargate-component-note' }, disabled ? [ note, E('br'), E('strong', {}, blockedNote) ] : note)
         ]);
       }
 
@@ -70,10 +71,11 @@ return view.extend({
           '.stargate-component-note{font-size:12px;opacity:.76;line-height:1.45}',
           '@media screen and (max-width:720px){.stargate-component-action{grid-template-columns:1fr}}'
         ].join('')),
-        actionButton(_('Generate'), _('Build the next sing-box config from UCI. It only writes the staging file and does not start the service.'), '/usr/share/stargate/stargate.sh', [ 'generate' ]),
-        actionButton(_('Check'), _('Run sing-box check against the staging config before it becomes active.'), '/usr/share/stargate/stargate.sh', [ 'check' ]),
-        actionButton(_('Apply'), _('Validate and replace the active config. It does not enable transparent proxy or change firewall rules.'), '/usr/share/stargate/stargate.sh', [ 'apply' ], 'cbi-button-apply'),
-        actionButton(_('Restart'), _('Restart only the Stargate sing-box service with the current active config.'), '/etc/init.d/stargate', [ 'restart' ], 'cbi-button-action')
+        actionButton(_('Generate'), _('Build the next sing-box config from UCI. It only writes the staging file and does not start the service.'), '/usr/share/stargate/stargate.sh', [ 'generate' ], null, true),
+        actionButton(_('Check'), _('Run sing-box check against the staging config before it becomes active.'), '/usr/share/stargate/stargate.sh', [ 'check' ], null, true),
+        actionButton(_('Apply'), _('Validate and replace the active config. It does not enable transparent proxy or change firewall rules.'), '/usr/share/stargate/stargate.sh', [ 'apply' ], 'cbi-button-apply', true),
+        actionButton(_('Restart'), _('Restart only the Stargate sing-box service with the current active config.'), '/etc/init.d/stargate', [ 'restart' ], 'cbi-button-action', true),
+        actionButton(_('Rollback'), _('Restore the last backup config created before Apply. If Stargate is running, it restarts with the restored config.'), '/usr/share/stargate/stargate.sh', [ 'rollback' ], null, false)
       ]);
     };
 

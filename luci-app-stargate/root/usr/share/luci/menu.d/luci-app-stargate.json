@@ -47,13 +47,13 @@
       "path": "stargate/rules"
     }
   },
-  "admin/services/stargate/safety": {
-    "title": "Safety",
+  "admin/services/stargate/logs": {
+    "title": "Logs",
     "translate": "stargate",
     "order": 60,
     "action": {
       "type": "view",
-      "path": "stargate/safety"
+      "path": "stargate/logs"
     }
   },
   "admin/services/stargate/component": {
