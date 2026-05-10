@@ -14,6 +14,10 @@ Usage:
   /usr/share/stargate/stargate.sh generate
   /usr/share/stargate/stargate.sh check
   /usr/share/stargate/stargate.sh apply
+  /usr/share/stargate/stargate.sh rollback
+  /usr/share/stargate/stargate.sh start
+  /usr/share/stargate/stargate.sh start-transparent [redirect|tproxy] [port]
+  /usr/share/stargate/stargate.sh stop
   /usr/share/stargate/stargate.sh status
   /usr/share/stargate/stargate.sh probe baidu|google|github
   /usr/share/stargate/stargate.sh node-add label server port password sni insecure
@@ -36,6 +40,13 @@ bool_json() {
   case "${1:-0}" in
     1|true|TRUE|yes|on) printf true ;;
     *) printf false ;;
+  esac
+}
+
+bool_value() {
+  case "${1:-0}" in
+    1|true|TRUE|yes|on) printf 1 ;;
+    *) printf 0 ;;
   esac
 }
 
@@ -75,6 +86,14 @@ load_config() {
   socks_port="$(uci_get inbound socks_port 10808)"
   http_listen="$(uci_get inbound http_listen 127.0.0.1)"
   http_port="$(uci_get inbound http_port 10809)"
+  transparent_proxy="$(uci_get inbound transparent_proxy '')"
+  if [ -z "$transparent_proxy" ]; then
+    transparent_proxy="$(uci_get safety transparent_proxy 0)"
+  fi
+  transparent_proxy="$(bool_value "$transparent_proxy")"
+  transparent_mode="$(uci_get inbound transparent_mode redirect)"
+  transparent_listen="$(uci_get inbound transparent_listen 0.0.0.0)"
+  transparent_port="$(uci_get inbound transparent_port 12345)"
 
   node_type="$(uci_get node type anytls)"
   node_server="$(uci_get node server '')"
@@ -127,6 +146,10 @@ validate_config() {
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
+  case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
+  case "$socks_port" in ''|*[!0-9]*) echo "SOCKS port must be numeric" >&2; exit 1 ;; esac
+  case "$http_port" in ''|*[!0-9]*) echo "HTTP port must be numeric" >&2; exit 1 ;; esac
+  case "$transparent_port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     [ -f "$rules_direct_rule_set" ] || {
       echo "direct rule-set missing: run Rules -> Update base rules first ($rules_direct_rule_set)" >&2
@@ -563,6 +586,36 @@ write_dns_rules() {
   fi
 }
 
+write_inbounds() {
+  printf '    {\n'
+  printf '      "type": "socks",\n'
+  printf '      "tag": "socks-in",\n'
+  printf '      "listen": "%s",\n' "$esc_socks_listen"
+  printf '      "listen_port": %s\n' "$socks_port"
+  printf '    },\n'
+  printf '    {\n'
+  printf '      "type": "http",\n'
+  printf '      "tag": "http-in",\n'
+  printf '      "listen": "%s",\n' "$esc_http_listen"
+  printf '      "listen_port": %s\n' "$http_port"
+  printf '    }'
+  if [ "$transparent_proxy" = "1" ]; then
+    printf ',\n'
+    printf '    {\n'
+    printf '      "type": "%s",\n' "$transparent_mode"
+    printf '      "tag": "transparent-in",\n'
+    printf '      "listen": "%s",\n' "$esc_transparent_listen"
+    printf '      "listen_port": %s' "$transparent_port"
+    if [ "$transparent_mode" = "tproxy" ]; then
+      printf ',\n      "network": "tcp"\n'
+    else
+      printf '\n'
+    fi
+    printf '    }'
+  fi
+  printf '\n'
+}
+
 write_rule_sets() {
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     printf '      {\n'
@@ -591,6 +644,9 @@ write_route_rules() {
     printf '      %s' "$1"
   }
 
+  if [ "$transparent_proxy" = "1" ]; then
+    add_rule '{ "inbound": ["transparent-in"], "action": "sniff" }'
+  fi
   if [ "$rules_block_quic" = "1" ]; then
     add_rule '{ "network": "udp", "port": 443, "action": "reject" }'
   fi
@@ -625,6 +681,9 @@ generate_config() {
   esc_server="$(printf '%s' "$node_server" | json_escape)"
   esc_password="$(printf '%s' "$node_password" | json_escape)"
   esc_sni="$(printf '%s' "$node_sni" | json_escape)"
+  esc_socks_listen="$(printf '%s' "$socks_listen" | json_escape)"
+  esc_http_listen="$(printf '%s' "$http_listen" | json_escape)"
+  esc_transparent_listen="$(printf '%s' "$transparent_listen" | json_escape)"
   esc_direct_rule_set="$(printf '%s' "$rules_direct_rule_set" | json_escape)"
   esc_proxy_rule_set="$(printf '%s' "$rules_proxy_rule_set" | json_escape)"
   tls_server_name=""
@@ -655,18 +714,9 @@ EOF
     "independent_cache": true
   },
   "inbounds": [
-    {
-      "type": "socks",
-      "tag": "socks-in",
-      "listen": "$socks_listen",
-      "listen_port": $socks_port
-    },
-    {
-      "type": "http",
-      "tag": "http-in",
-      "listen": "$http_listen",
-      "listen_port": $http_port
-    }
+EOF
+    write_inbounds
+    cat <<EOF
   ],
   "outbounds": [
     {
@@ -725,6 +775,140 @@ apply_config() {
   echo "config applied: $config_file"
 }
 
+restore_backup_config() {
+  load_config
+  [ -f "$backup_file" ] || {
+    echo "no backup config found: $backup_file" >&2
+    return 1
+  }
+  [ -x "$singbox_bin" ] || {
+    echo "sing-box not found: $singbox_bin" >&2
+    return 1
+  }
+  "$singbox_bin" check -c "$backup_file"
+  if [ -f "$config_file" ]; then
+    cp -a "$config_file" "$config_file.rollback_from"
+  fi
+  cp -a "$backup_file" "$config_file"
+  echo "rolled back config: $backup_file -> $config_file"
+}
+
+rollback_config() {
+  restore_backup_config
+  if pgrep -af "sing-box run -c" 2>/dev/null | grep -F -- "$config_file" >/dev/null 2>&1; then
+    /etc/init.d/stargate restart
+    echo "service restarted with backup config"
+  else
+    echo "service is not running; backup config restored"
+  fi
+}
+
+restart_service_with_rollback() {
+  if /etc/init.d/stargate restart; then
+    echo "service restarted"
+    return 0
+  fi
+
+  echo "service restart failed; trying rollback" >&2
+  restore_backup_config || return 1
+  if /etc/init.d/stargate restart; then
+    echo "rollback applied and service restarted"
+    return 0
+  fi
+
+  echo "service restart still failed after rollback" >&2
+  return 1
+}
+
+ensure_inbound_section() {
+  uci_cmd get "$app.inbound" >/dev/null 2>&1 || uci_cmd set "$app.inbound=inbound"
+}
+
+save_transparent_uci() {
+  old_transparent_proxy="$(uci_get inbound transparent_proxy '')"
+  old_transparent_mode="$(uci_get inbound transparent_mode '')"
+  old_transparent_listen="$(uci_get inbound transparent_listen '')"
+  old_transparent_port="$(uci_get inbound transparent_port '')"
+}
+
+restore_transparent_uci() {
+  ensure_inbound_section
+  if [ -n "${old_transparent_proxy:-}" ]; then
+    uci_cmd set "$app.inbound.transparent_proxy=$old_transparent_proxy"
+  else
+    uci_cmd delete "$app.inbound.transparent_proxy" 2>/dev/null || true
+  fi
+  if [ -n "${old_transparent_mode:-}" ]; then
+    uci_cmd set "$app.inbound.transparent_mode=$old_transparent_mode"
+  else
+    uci_cmd delete "$app.inbound.transparent_mode" 2>/dev/null || true
+  fi
+  if [ -n "${old_transparent_listen:-}" ]; then
+    uci_cmd set "$app.inbound.transparent_listen=$old_transparent_listen"
+  else
+    uci_cmd delete "$app.inbound.transparent_listen" 2>/dev/null || true
+  fi
+  if [ -n "${old_transparent_port:-}" ]; then
+    uci_cmd set "$app.inbound.transparent_port=$old_transparent_port"
+  else
+    uci_cmd delete "$app.inbound.transparent_port" 2>/dev/null || true
+  fi
+  uci_commit
+}
+
+start_local_proxy() {
+  load_config
+  transparent_proxy=0
+  validate_config
+  save_transparent_uci
+  ensure_inbound_section
+  uci_cmd set "$app.inbound.transparent_proxy=0"
+  uci_commit
+  if apply_config && restart_service_with_rollback; then
+    echo "started local proxy mode"
+  else
+    rc=$?
+    restore_transparent_uci
+    exit "$rc"
+  fi
+}
+
+start_transparent_proxy() {
+  mode="${1:-redirect}"
+  case "$mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $mode" >&2; exit 1 ;; esac
+  port="${2:-}"
+  [ -n "$port" ] || port="$(uci_get inbound transparent_port 12345)"
+  case "$port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
+  load_config
+  transparent_proxy=1
+  transparent_mode="$mode"
+  transparent_port="$port"
+  validate_config
+  save_transparent_uci
+  ensure_inbound_section
+  uci_cmd set "$app.inbound.transparent_proxy=1"
+  uci_cmd set "$app.inbound.transparent_mode=$mode"
+  uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
+  uci_cmd set "$app.inbound.transparent_port=$port"
+  uci_commit
+  if apply_config && restart_service_with_rollback; then
+    echo "started transparent proxy mode: $mode"
+  else
+    rc=$?
+    restore_transparent_uci
+    exit "$rc"
+  fi
+}
+
+stop_service() {
+  [ -x /etc/init.d/stargate ] || {
+    echo "service script missing: /etc/init.d/stargate" >&2
+    exit 1
+  }
+  /etc/init.d/stargate stop
+  echo "service stopped"
+}
+
 status_json() {
   load_config
   service_state="unknown"
@@ -741,6 +925,20 @@ status_json() {
   fi
   printf '"node_server":"%s",' "$(printf '%s' "$node_server" | json_escape)"
   printf '"config_file":"%s",' "$config_file"
+  printf '"backup_file":"%s",' "$backup_file"
+  if [ -f "$backup_file" ]; then
+    printf '"backup_ready":true,'
+  else
+    printf '"backup_ready":false,'
+  fi
+  printf '"transparent_proxy":%s,' "$(bool_json "$transparent_proxy")"
+  printf '"transparent_mode":"%s",' "$transparent_mode"
+  printf '"transparent_listen":"%s",' "$(printf '%s' "$transparent_listen" | json_escape)"
+  printf '"transparent_port":"%s",' "$(printf '%s' "$transparent_port" | json_escape)"
+  printf '"socks_listen":"%s",' "$(printf '%s' "$socks_listen" | json_escape)"
+  printf '"socks_port":"%s",' "$(printf '%s' "$socks_port" | json_escape)"
+  printf '"http_listen":"%s",' "$(printf '%s' "$http_listen" | json_escape)"
+  printf '"http_port":"%s",' "$(printf '%s' "$http_port" | json_escape)"
   printf '"service":%s,' "$(printf '%s' "$service_state" | json_escape | sed 's/^/"/;s/$/"/')"
   printf '"singbox":%s' "$(printf '%s' "$singbox_version" | json_escape | sed 's/^/"/;s/$/"/')"
   printf '}\n'
@@ -789,7 +987,7 @@ probe_url() {
 }
 
 logs_text() {
-  logread -e stargate -e sing-box 2>/dev/null | tail -80 || true
+  logread -e stargate -e sing-box 2>/dev/null | tail -160 || true
 }
 
 action="${1:-}"
@@ -797,6 +995,10 @@ case "$action" in
   generate) generate_config ;;
   check) generated="$(generate_config)"; next_file="$generated"; check_next ;;
   apply) apply_config ;;
+  rollback) rollback_config ;;
+  start) start_local_proxy ;;
+  start-transparent) start_transparent_proxy "${2:-redirect}" "${3:-}" ;;
+  stop) stop_service ;;
   status) status_json ;;
   probe) probe_url "${2:-}" ;;
   node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" ;;
