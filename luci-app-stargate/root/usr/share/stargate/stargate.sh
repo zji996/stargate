@@ -82,10 +82,13 @@ load_config() {
   node_insecure="$(uci_get node insecure 1)"
 
   dns_mode="$(uci_get dns mode tcp_doh)"
-  dns_final="$(uci_get dns final remote-doh)"
+  dns_final="$(uci_get dns final direct-dns)"
   dns_strategy="$(uci_get dns strategy prefer_ipv4)"
+  dns_local_preset="$(uci_get dns local_preset alidns_tcp)"
   dns_local_server="$(uci_get dns local_server 223.5.5.5)"
   dns_local_type="$(uci_get dns local_type tcp)"
+  dns_local_path="$(uci_get dns local_path /dns-query)"
+  dns_remote_preset="$(uci_get dns remote_preset cloudflare_doh)"
   dns_remote_server="$(uci_get dns remote_server 1.1.1.1)"
   dns_remote_type="$(uci_get dns remote_type https)"
   dns_remote_path="$(uci_get dns remote_path /dns-query)"
@@ -113,8 +116,57 @@ validate_config() {
     echo "active node password is required: edit the node or choose another node" >&2
     exit 1
   }
+  apply_dns_presets
+  case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
+}
+
+apply_dns_presets() {
+  case "$dns_local_preset" in
+    alidns_tcp)
+      dns_local_type="tcp"
+      dns_local_server="223.5.5.5"
+      dns_local_path="/dns-query"
+      ;;
+    dnspod_tcp)
+      dns_local_type="tcp"
+      dns_local_server="119.29.29.29"
+      dns_local_path="/dns-query"
+      ;;
+    onedns_tcp)
+      dns_local_type="tcp"
+      dns_local_server="114.114.114.114"
+      dns_local_path="/dns-query"
+      ;;
+    custom) ;;
+    *) echo "unsupported direct dns preset: $dns_local_preset" >&2; exit 1 ;;
+  esac
+
+  case "$dns_remote_preset" in
+    cloudflare_doh)
+      dns_remote_type="https"
+      dns_remote_server="1.1.1.1"
+      dns_remote_path="/dns-query"
+      ;;
+    cloudflare_security_doh)
+      dns_remote_type="https"
+      dns_remote_server="1.1.1.2"
+      dns_remote_path="/dns-query"
+      ;;
+    google_doh)
+      dns_remote_type="https"
+      dns_remote_server="8.8.8.8"
+      dns_remote_path="/dns-query"
+      ;;
+    quad9_doh)
+      dns_remote_type="https"
+      dns_remote_server="9.9.9.9"
+      dns_remote_path="/dns-query"
+      ;;
+    custom) ;;
+    *) echo "unsupported remote dns preset: $dns_remote_preset" >&2; exit 1 ;;
+  esac
 }
 
 uri_decode() {
@@ -355,12 +407,17 @@ node_delete() {
 
 write_dns_servers() {
   esc_local="$(printf '%s' "$dns_local_server" | json_escape)"
+  esc_local_path="$(printf '%s' "$dns_local_path" | json_escape)"
   esc_remote="$(printf '%s' "$dns_remote_server" | json_escape)"
   esc_path="$(printf '%s' "$dns_remote_path" | json_escape)"
   esc_detour="$(printf '%s' "$dns_remote_detour" | json_escape)"
 
   printf '      { "tag": "local", "type": "local" },\n'
-  printf '      { "tag": "direct-dns", "type": "%s", "server": "%s" },\n' "$dns_local_type" "$esc_local"
+  if [ "$dns_local_type" = "https" ]; then
+    printf '      { "tag": "direct-dns", "type": "https", "server": "%s", "path": "%s" },\n' "$esc_local" "$esc_local_path"
+  else
+    printf '      { "tag": "direct-dns", "type": "%s", "server": "%s" },\n' "$dns_local_type" "$esc_local"
+  fi
   if [ "$dns_remote_type" = "https" ]; then
     printf '      { "tag": "remote-doh", "type": "https", "server": "%s", "path": "%s", "detour": "%s" }\n' "$esc_remote" "$esc_path" "$esc_detour"
   else

@@ -243,7 +243,55 @@ msgstr ""
 msgid "TCP direct + DoH remote"
 msgstr ""
 
+msgid "Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node. Stargate only writes sing-box internal DNS and does not take over dnsmasq."
+msgstr ""
+
 msgid "Strategy"
+msgstr ""
+
+msgid "AliDNS TCP (recommended)"
+msgstr ""
+
+msgid "DNSPod TCP"
+msgstr ""
+
+msgid "114DNS TCP"
+msgstr ""
+
+msgid "Custom"
+msgstr ""
+
+msgid "Used for direct domains and for resolving the proxy server domain before the tunnel is up."
+msgstr ""
+
+msgid "Custom direct DNS transport"
+msgstr ""
+
+msgid "Custom direct DNS server"
+msgstr ""
+
+msgid "Custom direct DoH path"
+msgstr ""
+
+msgid "Cloudflare DoH (recommended)"
+msgstr ""
+
+msgid "Cloudflare Security DoH"
+msgstr ""
+
+msgid "Google DoH"
+msgstr ""
+
+msgid "Quad9 DoH"
+msgstr ""
+
+msgid "Used for domains matched by proxy rules. Presets avoid protocol and path mismatches that often make DNS fail silently."
+msgstr ""
+
+msgid "Custom remote DNS transport"
+msgstr ""
+
+msgid "Custom remote DNS server"
 msgstr ""
 
 msgid "Direct DNS transport"
@@ -262,6 +310,9 @@ msgid "DoH path"
 msgstr ""
 
 msgid "Final resolver"
+msgstr ""
+
+msgid "Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver."
 msgstr ""
 
 msgid "Remote"

@@ -79,10 +79,13 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 默认 DNS 配置：
 
 - `local`：系统本地解析器。
-- `direct-dns`：默认 `tcp://223.5.5.5`。
-- `remote-doh`：默认 `https://1.1.1.1/dns-query`，通过代理出站。
+- `direct-dns`：默认使用阿里 DNS 的 TCP 预设 `tcp://223.5.5.5`。
+- `remote-doh`：默认使用 Cloudflare DoH 预设 `https://1.1.1.1/dns-query`，通过代理出站。
+- `final`：默认 `direct-dns`。命中 GFW 规则的域名仍会走 `remote-doh`，未命中的域名使用直连 DNS 兜底。
 
 第一阶段的入站 SOCKS/HTTP 使用 sing-box 的 DNS 解析能力，不接管局域网 DNS。
+
+LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直连 DNS 和远端 DoH 预设会同时确定协议、服务器和 DoH path，避免只改服务器但忘记协议或路径导致 DNS 静默失效；选择 `Custom` 时才显示底层传输、服务器和 path。
 
 ## 路由器经验
 

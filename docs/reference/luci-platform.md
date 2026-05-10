@@ -154,11 +154,14 @@ Overview 的 Baidu / Google / GitHub 测试用于检查路由器本机出口连�
 第一版默认组合：
 
 - `local`：系统本地解析器，作为兜底。
-- `direct-dns`：直连 DNS，默认 `tcp://223.5.5.5`。
-- `remote-doh`：远端 DoH，默认 `https://1.1.1.1/dns-query`，通过 `anytls-out` 出站。
+- `direct-dns`：直连 DNS，默认阿里 DNS TCP 预设 `tcp://223.5.5.5`。
+- `remote-doh`：远端 DoH，默认 Cloudflare DoH 预设 `https://1.1.1.1/dns-query`，通过 `anytls-out` 出站。
+- `dns.final`：默认 `direct-dns`；GFW 规则命中的域名仍会由 DNS rule 指向 `remote-doh`。
 - `route.default_domain_resolver`：默认 `direct-dns`，用于解析出站服务器域名，避免依赖 sing-box 1.12 后的废弃行为。
 
 这对应用户希望的“tcp doh 的 dns”：直连侧优先 TCP，代理侧优先 DoH。后续可以继续扩展 DoT、HTTP/3、FakeIP 和 DNS hijack，但第一版不默认接管局域网 DNS。
+
+LuCI 页面不再要求用户手工拼协议、服务器和 DoH path。直连 DNS 与远端 DNS 均提供预设下拉，预设会完整写入 sing-box 所需的 type/server/path；选择 `Custom` 时才显示自定义传输、服务器和 path。这个设计吸收 PassWall2 的服务商预设经验，但减少高级选项默认暴露，降低 DNS 配置失效概率。
 
 ## GFW 分流设计
 

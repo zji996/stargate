@@ -244,8 +244,56 @@ msgstr "模式"
 msgid "TCP direct + DoH remote"
 msgstr "直连 TCP + 远端 DoH"
 
+msgid "Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node. Stargate only writes sing-box internal DNS and does not take over dnsmasq."
+msgstr "推荐：直连域名使用国内 TCP DNS；命中代理规则的域名通过当前节点使用远端 DoH。Stargate 只写 sing-box 内部 DNS，不接管 dnsmasq。"
+
 msgid "Strategy"
 msgstr "策略"
+
+msgid "AliDNS TCP (recommended)"
+msgstr "阿里 DNS TCP（推荐）"
+
+msgid "DNSPod TCP"
+msgstr "DNSPod TCP"
+
+msgid "114DNS TCP"
+msgstr "114DNS TCP"
+
+msgid "Custom"
+msgstr "自定义"
+
+msgid "Used for direct domains and for resolving the proxy server domain before the tunnel is up."
+msgstr "用于直连域名，也用于代理隧道建立前解析节点服务器域名。"
+
+msgid "Custom direct DNS transport"
+msgstr "自定义直连 DNS 传输"
+
+msgid "Custom direct DNS server"
+msgstr "自定义直连 DNS 服务器"
+
+msgid "Custom direct DoH path"
+msgstr "自定义直连 DoH 路径"
+
+msgid "Cloudflare DoH (recommended)"
+msgstr "Cloudflare DoH（推荐）"
+
+msgid "Cloudflare Security DoH"
+msgstr "Cloudflare 安全 DoH"
+
+msgid "Google DoH"
+msgstr "Google DoH"
+
+msgid "Quad9 DoH"
+msgstr "Quad9 DoH"
+
+msgid "Used for domains matched by proxy rules. Presets avoid protocol and path mismatches that often make DNS fail silently."
+msgstr "用于命中代理规则的域名。预设会避免协议和路径不匹配导致 DNS 静默失效。"
+
+msgid "Custom remote DNS transport"
+msgstr "自定义远端 DNS 传输"
+
+msgid "Custom remote DNS server"
+msgstr "自定义远端 DNS 服务器"
 
 msgid "Direct DNS transport"
 msgstr "直连 DNS 传输"
@@ -264,6 +312,9 @@ msgstr "DoH 路径"
 
 msgid "Final resolver"
 msgstr "最终解析器"
+
+msgid "Recommended: Direct. GFW rule matches still use Remote automatically; Direct only controls the fallback resolver."
+msgstr "推荐：直连。GFW 规则命中仍会自动使用远端；直连只控制兜底解析器。"
 
 msgid "Remote"
 msgstr "远端"
