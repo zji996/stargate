@@ -1,0 +1,14 @@
+/dist/
+/build/
+/tmp/
+/*.tar.gz
+/*.zip
+/*.ipk
+/*.apk
+*.log
+*.pid
+*.bak
+*.tmp
+*.swp
+.DS_Store
+.vscode/
