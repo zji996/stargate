@@ -89,7 +89,7 @@ LuCI 版后端还提供两个显式启动动作：
 
 - `local`：系统本地解析器。
 - `direct-dns`：默认使用阿里 DNS 的 TCP 预设 `tcp://223.5.5.5`。
-- `remote-doh`：默认使用 Cloudflare DoH 预设 `https://1.1.1.1/dns-query`，通过代理出站。
+- `remote-doh`：默认使用 Quad9 DoH 预设 `https://9.9.9.9/dns-query`，通过代理出站。
 - `final`：默认 `direct-dns`。命中代理规则的域名仍会走 `remote-doh`，未命中的域名使用直连 DNS 兜底。
 
 第一阶段的入站 SOCKS/HTTP 使用 sing-box 的 DNS 解析能力，不接管局域网 DNS。

@@ -31,8 +31,14 @@ msgstr "日志"
 msgid "Component Settings"
 msgstr "组件设置"
 
+msgid "Maintenance"
+msgstr "维护"
+
 msgid "Runtime status, startup mode, and local outlet checks."
 msgstr "运行状态、启动方式和本机出口检测。"
+
+msgid "Runtime status, proxy mode, and local outlet checks."
+msgstr "运行状态、代理模式和本机出口检测。"
 
 msgid "No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate."
 msgstr "还没有配置当前节点。请先到节点页添加节点，并点击“使用此节点”，之后才能启用或启动 Stargate。"
@@ -43,8 +49,17 @@ msgstr "操作结果"
 msgid "Manage sing-box component paths and explicit config lifecycle actions."
 msgstr "管理 sing-box 组件路径和显式配置生命周期操作。"
 
+msgid "Manage sing-box paths, future component upgrades, and Stargate backup restore."
+msgstr "管理 sing-box 路径、后续组件升级和 Stargate 备份还原。"
+
+msgid "Maintain sing-box paths, future component upgrades, and Stargate backup restore."
+msgstr "维护 sing-box 路径、后续组件升级和 Stargate 备份还原。"
+
 msgid "Runtime maintenance"
 msgstr "运行维护"
+
+msgid "sing-box settings"
+msgstr "sing-box 设置"
 
 msgid "Log level"
 msgstr "日志级别"
@@ -54,6 +69,24 @@ msgstr "生成配置"
 
 msgid "sing-box binary"
 msgstr "sing-box 可执行文件"
+
+msgid "Path to the sing-box executable used by Stargate."
+msgstr "Stargate 使用的 sing-box 可执行文件路径。"
+
+msgid "Component upgrades"
+msgstr "组件升级"
+
+msgid "Current version"
+msgstr "当前版本"
+
+msgid "Upload upgrade"
+msgstr "上传升级"
+
+msgid "Use the Lua CBI page on this router to show live version."
+msgstr "此路由器使用 Lua CBI 页面显示实时版本。"
+
+msgid "Reserved for future sing-box and Stargate component upgrade controls. Current releases keep upgrades manual to avoid changing router packages unexpectedly."
+msgstr "预留给后续 sing-box 和 Stargate 组件升级控制。当前版本保持手动升级，避免意外改动路由器软件包。"
 
 msgid "Status"
 msgstr "状态"
@@ -84,6 +117,9 @@ msgstr "操作"
 
 msgid "Maintenance actions"
 msgstr "维护操作"
+
+msgid "Backup restore"
+msgstr "备份还原"
 
 msgid "Generate"
 msgstr "生成"
@@ -129,6 +165,51 @@ msgstr "仅使用当前正式配置重启 Stargate 的 sing-box 服务。"
 
 msgid "Restore the last backup config created before Apply. If Stargate is running, it restarts with the restored config."
 msgstr "恢复上一次应用前备份的配置。如果 Stargate 正在运行，会用恢复后的配置重启。"
+
+msgid "Back up or restore Stargate client, rules, and generated sing-box configuration."
+msgstr "备份或还原 Stargate 客户端、规则和已生成的 sing-box 配置。"
+
+msgid "Note: restoring config across very different versions may cause compatibility issues."
+msgstr "注意：不同版本间的配置恢复可能会导致兼容性问题。"
+
+msgid "Create backup file"
+msgstr "创建备份文件"
+
+msgid "Download backup"
+msgstr "下载备份"
+
+msgid "Exports Stargate UCI config, generated config, backup config, env, and local rule files."
+msgstr "导出 Stargate UCI 配置、已生成配置、回滚备份、env 和本地规则文件。"
+
+msgid "Restore backup file"
+msgstr "恢复备份文件"
+
+msgid "Restore backup"
+msgstr "恢复备份"
+
+msgid "Restore a backup created by Stargate. The current UCI config is kept as /etc/config/stargate.restore_from."
+msgstr "恢复 Stargate 创建的备份。当前 UCI 配置会保留为 /etc/config/stargate.restore_from。"
+
+msgid "Restore default config"
+msgstr "恢复默认配置"
+
+msgid "Reset"
+msgstr "执行重置"
+
+msgid "Reset Stargate config to defaults and stop the service?"
+msgstr "将 Stargate 配置恢复默认并停止服务？"
+
+msgid "Reset only Stargate's own UCI config. It does not touch PassWall2, OpenClash, DHCP, dnsmasq, or firewall rules."
+msgstr "只重置 Stargate 自己的 UCI 配置，不触碰 PassWall2、OpenClash、DHCP、dnsmasq 或防火墙规则。"
+
+msgid "Rollback generated config"
+msgstr "回滚生成配置"
+
+msgid "Restore the last generated config backup created before Apply. If Stargate is running, it restarts with the restored config."
+msgstr "恢复上一次应用前备份的生成配置。如果 Stargate 正在运行，会用恢复后的配置重启。"
+
+msgid "Choose a backup file first."
+msgstr "请先选择备份文件。"
 
 msgid "Blocked until an active node is configured on the Node page."
 msgstr "需要先在节点页配置当前节点后才能执行。"
@@ -274,8 +355,11 @@ msgstr "自定义直连 DNS 服务器"
 msgid "Custom direct DoH path"
 msgstr "自定义直连 DoH 路径"
 
-msgid "Cloudflare DoH (recommended)"
-msgstr "Cloudflare DoH（推荐）"
+msgid "Quad9 DoH (recommended)"
+msgstr "Quad9 DoH（推荐）"
+
+msgid "Cloudflare DoH"
+msgstr "Cloudflare DoH"
 
 msgid "Cloudflare Security DoH"
 msgstr "Cloudflare 安全 DoH"
@@ -441,6 +525,15 @@ msgstr "运行状态"
 
 msgid "Local proxy"
 msgstr "本机代理"
+
+msgid "Enable Stargate with local SOCKS/HTTP inbounds only. Use Save & Apply in the bottom-right corner to commit this choice."
+msgstr "启用 Stargate 本机 SOCKS/HTTP 入站。勾选后使用右下角“保存&应用”提交。"
+
+msgid "Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself."
+msgstr "可选透明入站。需要先勾选本机代理；Stargate 仍不会自动写入防火墙或 DNS 接管规则。"
+
+msgid "Enable local proxy first."
+msgstr "请先勾选本机代理。"
 
 msgid "AnyTLS primary"
 msgstr "AnyTLS 主节点"

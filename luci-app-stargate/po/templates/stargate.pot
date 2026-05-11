@@ -30,7 +30,13 @@ msgstr ""
 msgid "Component Settings"
 msgstr ""
 
+msgid "Maintenance"
+msgstr ""
+
 msgid "Runtime status, startup mode, and local outlet checks."
+msgstr ""
+
+msgid "Runtime status, proxy mode, and local outlet checks."
 msgstr ""
 
 msgid "No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate."
@@ -42,7 +48,16 @@ msgstr ""
 msgid "Manage sing-box component paths and explicit config lifecycle actions."
 msgstr ""
 
+msgid "Manage sing-box paths, future component upgrades, and Stargate backup restore."
+msgstr ""
+
+msgid "Maintain sing-box paths, future component upgrades, and Stargate backup restore."
+msgstr ""
+
 msgid "Runtime maintenance"
+msgstr ""
+
+msgid "sing-box settings"
 msgstr ""
 
 msgid "Log level"
@@ -52,6 +67,24 @@ msgid "Generated config"
 msgstr ""
 
 msgid "sing-box binary"
+msgstr ""
+
+msgid "Path to the sing-box executable used by Stargate."
+msgstr ""
+
+msgid "Component upgrades"
+msgstr ""
+
+msgid "Current version"
+msgstr ""
+
+msgid "Upload upgrade"
+msgstr ""
+
+msgid "Use the Lua CBI page on this router to show live version."
+msgstr ""
+
+msgid "Reserved for future sing-box and Stargate component upgrade controls. Current releases keep upgrades manual to avoid changing router packages unexpectedly."
 msgstr ""
 
 msgid "Status"
@@ -82,6 +115,9 @@ msgid "Actions"
 msgstr ""
 
 msgid "Maintenance actions"
+msgstr ""
+
+msgid "Backup restore"
 msgstr ""
 
 msgid "Generate"
@@ -127,6 +163,51 @@ msgid "Restart only the Stargate sing-box service with the current active config
 msgstr ""
 
 msgid "Restore the last backup config created before Apply. If Stargate is running, it restarts with the restored config."
+msgstr ""
+
+msgid "Back up or restore Stargate client, rules, and generated sing-box configuration."
+msgstr ""
+
+msgid "Note: restoring config across very different versions may cause compatibility issues."
+msgstr ""
+
+msgid "Create backup file"
+msgstr ""
+
+msgid "Download backup"
+msgstr ""
+
+msgid "Exports Stargate UCI config, generated config, backup config, env, and local rule files."
+msgstr ""
+
+msgid "Restore backup file"
+msgstr ""
+
+msgid "Restore backup"
+msgstr ""
+
+msgid "Restore a backup created by Stargate. The current UCI config is kept as /etc/config/stargate.restore_from."
+msgstr ""
+
+msgid "Restore default config"
+msgstr ""
+
+msgid "Reset"
+msgstr ""
+
+msgid "Reset Stargate config to defaults and stop the service?"
+msgstr ""
+
+msgid "Reset only Stargate's own UCI config. It does not touch PassWall2, OpenClash, DHCP, dnsmasq, or firewall rules."
+msgstr ""
+
+msgid "Rollback generated config"
+msgstr ""
+
+msgid "Restore the last generated config backup created before Apply. If Stargate is running, it restarts with the restored config."
+msgstr ""
+
+msgid "Choose a backup file first."
 msgstr ""
 
 msgid "Blocked until an active node is configured on the Node page."
@@ -273,7 +354,10 @@ msgstr ""
 msgid "Custom direct DoH path"
 msgstr ""
 
-msgid "Cloudflare DoH (recommended)"
+msgid "Quad9 DoH (recommended)"
+msgstr ""
+
+msgid "Cloudflare DoH"
 msgstr ""
 
 msgid "Cloudflare Security DoH"
@@ -439,6 +523,15 @@ msgid "Runtime"
 msgstr ""
 
 msgid "Local proxy"
+msgstr ""
+
+msgid "Enable Stargate with local SOCKS/HTTP inbounds only. Use Save & Apply in the bottom-right corner to commit this choice."
+msgstr ""
+
+msgid "Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself."
+msgstr ""
+
+msgid "Enable local proxy first."
 msgstr ""
 
 msgid "AnyTLS primary"

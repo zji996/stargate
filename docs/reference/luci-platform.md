@@ -6,14 +6,14 @@
 
 当前包含：
 
-- Overview：较大的状态面板、本机出口连通性测试，以及显式启动入口。本机代理启动只启用 SOCKS/HTTP；透明代理启动额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
+- Overview：较大的状态面板、本机出口连通性测试，以及勾选式启用入口。本机代理只启用 SOCKS/HTTP；透明代理必须先勾选本机代理后才能勾选，并额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
 - Node：轻量节点列表、手动添加节点、通过 `anytls://` 链接添加节点、行内使用节点、弹窗编辑节点，以及本机 SOCKS/HTTP 入站。
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
 - Rules：基于 Loyalsoldier 基础规则的黑名单/白名单分流，并支持少量用户直连/代理域名覆盖。
-- Component Settings：日志级别、sing-box 路径、配置路径、工作目录，以及带解释的生成/检查/应用/重启/回滚维护动作。
+- Maintenance：分为 `sing-box 设置` 和 `备份还原` 两块；前者保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 体验提供备份还原、恢复默认配置和生成配置回滚。
 - Logs：最近的 Stargate 和 sing-box 日志。
 
-未配置当前节点时，Overview 不允许启动本机代理或透明代理，Component Settings 不允许执行生成、检查、应用或重启动作。回滚动作不依赖当前节点，因为它恢复的是上一份已校验过的正式配置。init 脚本也会在启动前检查当前节点，避免通过 LuCI 之外的路径启动一个没有节点的 sing-box 服务。
+未配置当前节点时，Overview 会提示先配置当前节点。回滚动作不依赖当前节点，因为它恢复的是上一份已校验过的正式配置。init 脚本也会在启动前检查当前节点，避免通过 LuCI 之外的路径启动一个没有节点的 sing-box 服务。
 
 ## 多语言
 
@@ -155,7 +155,7 @@ Overview 的 Baidu / Google / GitHub 测试用于检查路由器本机出口连�
 
 - `local`：系统本地解析器，作为兜底。
 - `direct-dns`：直连 DNS，默认阿里 DNS TCP 预设 `tcp://223.5.5.5`。
-- `remote-doh`：远端 DoH，默认 Cloudflare DoH 预设 `https://1.1.1.1/dns-query`，通过 `anytls-out` 出站。
+- `remote-doh`：远端 DoH，默认 Quad9 DoH 预设 `https://9.9.9.9/dns-query`，通过 `anytls-out` 出站。
 - `dns.final`：默认 `direct-dns`；命中代理规则的域名仍会由 DNS rule 指向 `remote-doh`。
 - `route.default_domain_resolver`：默认 `direct-dns`，用于解析出站服务器域名，避免依赖 sing-box 1.12 后的废弃行为。
 
@@ -182,7 +182,7 @@ Rules 页刻意不暴露默认出站和代理出站这类实现细节。用户�
 
 ## 暂不启用的能力
 
-第一版已经提供透明代理入站的显式启动入口，但仍不执行系统级接管：
+第一版已经提供透明代理入站开关，但仍不执行系统级接管：
 
 - 不自动写入 firewall4 / nftables 转发规则。
 - 不接管 dnsmasq。
