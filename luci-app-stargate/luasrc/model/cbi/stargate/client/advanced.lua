@@ -20,9 +20,9 @@ m.description = ui_text("Forwarding and system integration settings for transpar
 
 local action = http.formvalue("stargate_advanced_action")
 if action == "apply-forwarding" then
-  m.message = "<pre>" .. util.pcdata(sys.exec("/usr/share/stargate/stargate.sh firewall-apply 2>&1")) .. "</pre>"
+  m.message = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-apply 2>&1"))
 elseif action == "clean-forwarding" then
-  m.message = "<pre>" .. util.pcdata(sys.exec("/usr/share/stargate/stargate.sh firewall-clean 2>&1")) .. "</pre>"
+  m.message = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-clean 2>&1"))
 end
 
 s = m:section(NamedSection, "inbound", "inbound", ui_text("Forwarding", "转发配置"))
