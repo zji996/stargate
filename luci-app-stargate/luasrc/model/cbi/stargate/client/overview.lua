@@ -12,37 +12,7 @@ local function shellquote(value)
 end
 
 m = Map("stargate", translate("Stargate"))
-m.description = translate("Runtime status, startup mode, and local outlet checks.")
-
-local runtime_action = http.formvalue("stargate_runtime_action")
-local runtime_output = nil
-local runtime_ok = false
-if runtime_action == "start" then
-  runtime_output = sys.exec("/usr/share/stargate/stargate.sh start 2>&1")
-elseif runtime_action == "start-transparent" then
-  local mode = trim(http.formvalue("stargate_runtime_mode") or "")
-  local port = trim(http.formvalue("stargate_runtime_port") or "")
-  if mode == "" then
-    mode = trim(sys.exec("uci -q get stargate.inbound.transparent_mode 2>/dev/null || echo redirect"))
-  end
-  if port == "" then
-    port = trim(sys.exec("uci -q get stargate.inbound.transparent_port 2>/dev/null || echo 12345"))
-  end
-  if mode ~= "tproxy" then
-    mode = "redirect"
-  end
-  if not port:match("^[0-9]+$") then
-    port = "12345"
-  end
-  runtime_output = sys.exec("/usr/share/stargate/stargate.sh start-transparent " .. mode .. " " .. port .. " 2>&1")
-elseif runtime_action == "stop" then
-  runtime_output = sys.exec("/usr/share/stargate/stargate.sh stop 2>&1")
-elseif runtime_action == "rollback" then
-  runtime_output = sys.exec("/usr/share/stargate/stargate.sh rollback 2>&1")
-end
-if runtime_output then
-  runtime_ok = not runtime_output:match("[Ee]rror") and not runtime_output:match("[Ff]ailed") and not runtime_output:match("missing") and not runtime_output:match("required") and not runtime_output:match("not found") and not runtime_output:match("no backup")
-end
+m.description = translate("Runtime status, proxy mode, and local outlet checks.")
 
 local function ui_text(en, zh)
   local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
@@ -66,7 +36,6 @@ dash.rawhtml = true
 function dash.cfgvalue()
   local singbox_bin = trim(sys.exec("uci -q get stargate.global.singbox_bin 2>/dev/null || echo /usr/bin/sing-box"))
   local config_file = trim(sys.exec("uci -q get stargate.global.config_file 2>/dev/null || echo /etc/stargate/config.json"))
-  local backup_file = config_file .. ".bak"
   local version = trim(sys.exec(shellquote(singbox_bin) .. " version 2>/dev/null | head -1"))
   local enabled = trim(sys.exec("/etc/init.d/stargate enabled >/dev/null 2>&1 && echo enabled || echo disabled"))
   local running = trim(sys.exec("pgrep -af 'sing-box run -c' 2>/dev/null | grep -F -- " .. shellquote(config_file) .. " >/dev/null && echo running || echo stopped"))
@@ -78,14 +47,11 @@ function dash.cfgvalue()
   local node_ready = has_active_node()
   local transparent_enabled = trim(sys.exec("uci -q get stargate.inbound.transparent_proxy 2>/dev/null || echo 0"))
   local transparent_mode = trim(sys.exec("uci -q get stargate.inbound.transparent_mode 2>/dev/null || echo redirect"))
-  local backup_ready = sys.call("[ -f " .. shellquote(backup_file) .. " ] >/dev/null 2>&1") == 0
   local connect_url = dispatcher.build_url("admin", "services", "stargate", "connect_status")
-  local base = dispatcher.build_url("admin", "services", "stargate", "overview")
   local touch_check = ui_text("Touch Check", "点击检测")
   local checking = ui_text("Check...", "检测中...")
   local problem = ui_text("Problem detected!", "检测异常")
   local direct_outlet = ui_text("Direct local outlet", "本机直连出口")
-  local disabled = node_ready and "" or " disabled=\"disabled\""
 
   local function card(title, value, note, class, icon)
     return '<div class="stargate-card ' .. (class or "") .. '">' ..
@@ -107,10 +73,6 @@ function dash.cfgvalue()
       '<span id="stargate-' .. target .. '-note" class="stargate-card-note">' .. util.pcdata(direct_outlet) .. '</span>' ..
       '</span>' ..
       '</button>'
-  end
-
-  local function action_button(action, text, class, disabled_attr)
-    return '<input class="cbi-button ' .. (class or "") .. '" type="button" value="' .. util.pcdata(text) .. '"' .. (disabled_attr or "") .. ' onclick="stargateRuntimeAction(\'' .. action .. '\')" />'
   end
 
   return table.concat({
@@ -135,18 +97,20 @@ function dash.cfgvalue()
     '.stargate-probe:hover{border-color:#999;background:rgba(127,127,127,.12)}',
     '.stargate-probe-value{display:block;font-size:18px;font-weight:700;margin-top:5px;line-height:1.2}',
     '.stargate-alert{max-width:880px;margin:0 auto 14px;padding:11px 13px;border:1px solid rgba(251,99,64,.55);border-radius:6px;color:#fb6340;background:rgba(251,99,64,.08)}',
-    '.stargate-runtime-result{max-width:880px;margin:0 auto 14px;padding:10px 12px;border:1px solid rgba(127,127,127,.22);border-radius:6px;background:rgba(127,127,127,.08)}',
-    '.stargate-runtime-result pre{margin:6px 0 0;white-space:pre-wrap}',
-    '.stargate-runtime{max-width:880px;margin:12px auto 6px;display:grid;grid-template-columns:minmax(200px,1fr) 2fr;gap:12px;align-items:center;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05)}',
-    '.stargate-runtime-title{font-size:13px;font-weight:700}',
-    '.stargate-runtime-note{font-size:11px;opacity:.72;margin-top:4px;line-height:1.4}',
-    '.stargate-runtime-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}',
+    '#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{max-width:880px;margin:12px auto;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05);display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:12px;align-items:center}',
+    '#cbi-stargate-global-enabled .cbi-value-title,#cbi-stargate-inbound-transparent_proxy .cbi-value-title{font-weight:700}',
+    '#cbi-stargate-global-enabled .cbi-value-description,#cbi-stargate-inbound-transparent_proxy .cbi-value-description{display:block;margin-top:5px;font-size:11px;line-height:1.45;opacity:.72}',
+    '#cbi-stargate-global-enabled .cbi-value-field,#cbi-stargate-inbound-transparent_proxy .cbi-value-field{display:flex;align-items:center;justify-content:flex-start;min-height:34px}',
+    '#cbi-stargate-global-enabled input[type="checkbox"],#cbi-stargate-inbound-transparent_proxy input[type="checkbox"]{width:22px;height:22px;margin:0 10px 0 0;vertical-align:middle}',
+    '#cbi-stargate-inbound-transparent_proxy.stargate-disabled{opacity:.58}',
+    '#cbi-stargate-inbound-transparent_proxy.stargate-disabled input[type="checkbox"]{cursor:not-allowed}',
+    '#cbi-stargate-inbound-transparent_proxy.stargate-disabled .cbi-value-description:after{content:" ' .. ui_text("Enable local proxy first.", "请先勾选本机代理。") .. '";color:#fb9a05}',
+    '#cbi-stargate-inbound-transparent_mode,#cbi-stargate-inbound-transparent_port{max-width:880px;margin-left:auto;margin-right:auto}',
     '.stargate-ok{color:#2dce89}.stargate-warn{color:#fb9a05}.stargate-bad{color:#fb6340}.stargate-muted{color:#8898aa}',
     '@media screen and (max-width:1180px){.stargate-dashboard{grid-template-columns:repeat(2,minmax(220px,1fr))}.stargate-probes{grid-template-columns:repeat(3,minmax(180px,1fr))}}',
-    '@media screen and (max-width:720px){.stargate-dashboard,.stargate-probes,.stargate-runtime{grid-template-columns:1fr}.stargate-card{min-height:84px}.stargate-runtime-actions{justify-content:flex-start}}',
+    '@media screen and (max-width:720px){.stargate-dashboard,.stargate-probes,#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{grid-template-columns:1fr}.stargate-card{min-height:84px}}',
     '</style>',
     '<div class="stargate-wrap">',
-    (runtime_output and ('<div class="stargate-runtime-result ' .. (runtime_ok and 'stargate-ok' or 'stargate-bad') .. '"><strong>' .. ui_text("Operation result", "操作结果") .. '</strong><pre>' .. util.pcdata(trim(runtime_output)) .. '</pre></div>') or ""),
     (node_ready and "" or '<div class="stargate-alert">' .. ui_text("No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate.", "还没有配置当前节点。请先到节点页添加节点，并点击“使用此节点”，之后才能启用或启动 Stargate。") .. '</div>'),
     '<div class="stargate-dashboard">',
     card(ui_text("Runtime", "运行状态"), node_ready and running or ui_text("not ready", "未就绪"), node_ready and (((transparent_enabled == "1" and (ui_text("transparent", "透明代理") .. " " .. transparent_mode)) or ui_text("local proxy", "本机代理")) .. " / " .. enabled) or ui_text("active node required", "需要当前节点"), nil, "S"),
@@ -159,38 +123,42 @@ function dash.cfgvalue()
     probe_card("google", ui_text("Google Connection", "谷歌连接"), "G"),
     probe_card("github", ui_text("GitHub Connection", "GitHub 连接"), "GH"),
     '</div>',
-    '<div class="stargate-runtime">',
-    '<div><div class="stargate-runtime-title">' .. ui_text("Startup mode", "启动方式") .. '</div><div class="stargate-runtime-note">' .. ui_text("Local proxy keeps only SOCKS/HTTP. Transparent proxy adds a sing-box transparent inbound; redirect is the default.", "本机代理只启动 SOCKS/HTTP。透明代理会额外启动 sing-box 透明入站，默认 redirect。") .. '</div></div>',
-    '<div class="stargate-runtime-actions">',
-    action_button("start", ui_text("Start local proxy", "启动本机代理"), "cbi-button-apply", disabled),
-    action_button("start-transparent", ui_text("Start transparent proxy", "启动透明代理"), "cbi-button-action", disabled),
-    action_button("stop", ui_text("Stop", "停止"), "", ""),
-    action_button("rollback", ui_text("Rollback config", "回滚配置"), "", backup_ready and "" or ' disabled="disabled"'),
-    '</div>',
-    '</div>',
     '</div>',
     '<script type="text/javascript">',
     '//<![CDATA[',
     'function stargateProbeClass(ms, ok){if(!ok)return "stargate-bad";if(ms<800)return "stargate-ok";if(ms<1800)return "stargate-warn";return "stargate-bad";}',
     'function stargateSetProbe(target, text, note, cls){var s=document.getElementById("stargate-"+target+"-status");var n=document.getElementById("stargate-"+target+"-note");if(s){s.className="stargate-probe-value "+cls;s.innerHTML=text;}if(n){n.innerHTML=note||"";}}',
     'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. direct_outlet .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note="HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" "+note,"stargate-bad");}});}',
-    'function stargateRuntimeAction(action){var url="' .. base .. '?stargate_runtime_action="+encodeURIComponent(action);if(action==="start-transparent"){var mode=document.querySelector("[name=\'cbid.stargate.inbound.transparent_mode\']");var port=document.querySelector("[name=\'cbid.stargate.inbound.transparent_port\']");url+="&stargate_runtime_mode="+encodeURIComponent(mode&&mode.value?mode.value:"redirect");url+="&stargate_runtime_port="+encodeURIComponent(port&&port.value?port.value:"12345");}location.href=url;}',
+    'function stargateRuntimeCheckboxes(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");var row=document.getElementById("cbi-stargate-inbound-transparent_proxy");if(!local||!transparent)return;var on=!!local.checked;if(!on)transparent.checked=false;if(row){if(on)row.classList.remove("stargate-disabled");else row.classList.add("stargate-disabled");}}',
+    'document.addEventListener("DOMContentLoaded",function(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");if(local)local.addEventListener("change",stargateRuntimeCheckboxes);if(transparent)transparent.addEventListener("change",function(){if(local&&!local.checked)this.checked=false;stargateRuntimeCheckboxes();});stargateRuntimeCheckboxes();});',
     '//]]>',
     '</script>'
   }, "\n")
 end
 
+local_proxy = s:option(Flag, "enabled", ui_text("Local proxy", "本机代理"))
+local_proxy.description = ui_text("Enable Stargate with local SOCKS/HTTP inbounds only. Use Save & Apply in the bottom-right corner to commit this choice.", "启用 Stargate 本机 SOCKS/HTTP 入站。勾选后使用右下角“保存&应用”提交。")
+local_proxy.default = "0"
+local_proxy.rmempty = false
+
 mode_section = m:section(NamedSection, "inbound", "inbound", ui_text("Transparent proxy", "透明代理"))
 mode_section.anonymous = true
+
+transparent_proxy = mode_section:option(Flag, "transparent_proxy", ui_text("Transparent proxy", "透明代理"))
+transparent_proxy.description = ui_text("Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself.", "可选透明入站。需要先勾选本机代理；Stargate 仍不会自动写入防火墙或 DNS 接管规则。")
+transparent_proxy.default = "0"
+transparent_proxy.rmempty = false
 
 transparent_mode = mode_section:option(ListValue, "transparent_mode", ui_text("Transparent mode", "透明模式"))
 transparent_mode:value("redirect", "redirect")
 transparent_mode:value("tproxy", "tproxy")
 transparent_mode.default = "redirect"
 transparent_mode.rmempty = false
+transparent_mode:depends("transparent_proxy", "1")
 
 transparent_port = mode_section:option(Value, "transparent_port", ui_text("Transparent port", "透明代理端口"))
 transparent_port.default = "12345"
 transparent_port.datatype = "port"
+transparent_port:depends("transparent_proxy", "1")
 
 return m
