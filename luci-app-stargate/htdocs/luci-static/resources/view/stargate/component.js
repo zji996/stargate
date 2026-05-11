@@ -5,77 +5,121 @@
 'require ui';
 
 return view.extend({
-  load: function() {
-    return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'status' ]).then(function(text) {
-      try {
-        return JSON.parse(text || '{}');
-      } catch (e) {
-        return {};
-      }
-    }).catch(function() {
-      return {};
-    });
-  },
+  render: function() {
+    var m = new form.Map('stargate', _('Maintenance'));
+    m.description = _('Maintain sing-box paths, future component upgrades, and Stargate backup restore.');
 
-  render: function(status) {
-    var m = new form.Map('stargate', _('Component Settings'));
-    m.description = _('Manage sing-box component paths and explicit config lifecycle actions.');
+    var s = m.section(form.NamedSection, 'global', 'global', _('sing-box settings'));
+    s.anonymous = true;
 
-    var ops = m.section(form.NamedSection, 'global', 'global', _('Runtime maintenance'));
-    ops.anonymous = true;
+    var style = s.option(form.DummyValue, '_style', '');
+    style.rawhtml = true;
+    style.cfgvalue = function() {
+      return E('style', {}, [
+        '#cbi-stargate-global{max-width:960px;margin:0 auto 18px;border-radius:6px;overflow:hidden;background:rgba(127,127,127,.06)}',
+        '#cbi-stargate-global>legend{display:flex;align-items:center;min-height:58px;box-sizing:border-box;margin:0;padding:0 22px;width:100%;border:0;background:rgba(127,127,127,.14);font-size:22px;font-weight:700}',
+        '#cbi-stargate-global .cbi-section-node{padding:0}',
+        '#cbi-stargate-global-_style{display:none}',
+        '#cbi-stargate-global-singbox_bin,#cbi-stargate-global-_current_version,#cbi-stargate-global-_upgrade_actions{display:grid;grid-template-columns:220px minmax(320px,520px);gap:16px;align-items:center;min-height:72px;box-sizing:border-box;margin:0;padding:14px 22px;border-top:1px solid rgba(127,127,127,.10)}',
+        '#cbi-stargate-global-singbox_bin .cbi-value-title,#cbi-stargate-global-_current_version .cbi-value-title,#cbi-stargate-global-_upgrade_actions .cbi-value-title{text-align:right;font-size:15px;font-weight:600}',
+        '#cbi-stargate-global-singbox_bin .cbi-value-field,#cbi-stargate-global-_current_version .cbi-value-field,#cbi-stargate-global-_upgrade_actions .cbi-value-field{display:block;margin:0;width:auto}',
+        '#cbi-stargate-global-singbox_bin .cbi-value-description{display:none}',
+        '#cbi-stargate-global-singbox_bin input[type="text"]{width:100%;max-width:520px;box-sizing:border-box}',
+        '.stargate-inline-form{display:flex;align-items:center;gap:10px;flex-wrap:wrap}',
+        '.stargate-inline-form input[type="file"]{max-width:300px}',
+        '.stargate-maint{display:grid;gap:18px;max-width:960px;margin:0 auto 18px}',
+        '.stargate-maint-panel{border-radius:6px;overflow:hidden;background:rgba(127,127,127,.06)}',
+        '.stargate-maint-head{display:flex;align-items:center;min-height:58px;padding:0 22px;background:rgba(127,127,127,.14)}',
+        '.stargate-maint-title{font-size:22px;font-weight:700;line-height:1.2}',
+        '.stargate-maint-row{display:grid;grid-template-columns:220px minmax(320px,520px);gap:16px;align-items:center;min-height:72px;padding:14px 22px;border-top:1px solid rgba(127,127,127,.10)}',
+        '.stargate-maint-row:nth-child(odd){background:rgba(127,127,127,.045)}',
+        '.stargate-maint-label{text-align:right;font-size:15px;font-weight:600}',
+        '.stargate-maint-control{display:flex;align-items:center;gap:10px;min-width:0}',
+        '.stargate-maint-control input[type="file"]{width:100%;max-width:300px;box-sizing:border-box}',
+        '.stargate-maint-control .cbi-button,.stargate-maint-control a.cbi-button{min-width:118px;text-align:center;box-sizing:border-box}',
+        '.stargate-maint-version{opacity:.82}',
+        '@media screen and (max-width:820px){#cbi-stargate-global-singbox_bin,#cbi-stargate-global-_current_version,#cbi-stargate-global-_upgrade_actions,.stargate-maint-row{grid-template-columns:1fr;gap:8px}#cbi-stargate-global-singbox_bin .cbi-value-title,#cbi-stargate-global-_current_version .cbi-value-title,#cbi-stargate-global-_upgrade_actions .cbi-value-title,.stargate-maint-label{text-align:left}.stargate-maint-control{flex-wrap:wrap}}'
+      ].join(''));
+    };
 
-    var logLevel = ops.option(form.ListValue, 'log_level', _('Log level'));
-    logLevel.value('debug', 'debug');
-    logLevel.value('info', 'info');
-    logLevel.value('warn', 'warn');
-    logLevel.value('error', 'error');
-    logLevel.default = 'warn';
-
-    var bin = ops.option(form.Value, 'singbox_bin', _('sing-box binary'));
+    var bin = s.option(form.Value, 'singbox_bin', _('sing-box binary'));
     bin.default = '/usr/bin/sing-box';
 
-    var configFile = ops.option(form.Value, 'config_file', _('Generated config'));
-    configFile.default = '/etc/stargate/config.json';
+    var currentVersion = s.option(form.DummyValue, '_current_version', _('Current version'));
+    currentVersion.rawhtml = true;
+    currentVersion.cfgvalue = function() {
+      return E('span', { 'class': 'stargate-maint-version' }, _('Use the Lua CBI page on this router to show live version.'));
+    };
 
-    var workDir = ops.option(form.Value, 'work_dir', _('Work directory'));
-    workDir.default = '/etc/stargate';
+    var upgradeActions = s.option(form.DummyValue, '_upgrade_actions', _('Component upgrades'));
+    upgradeActions.rawhtml = true;
+    upgradeActions.cfgvalue = function() {
+      return E('form', { 'class': 'stargate-inline-form', 'method': 'post', 'action': L.url('admin/services/stargate/singbox_upgrade'), 'enctype': 'multipart/form-data' }, [
+        E('input', { 'type': 'file', 'name': 'binary' }),
+        E('input', { 'type': 'hidden', 'name': 'upgrade', 'value': '1' }),
+        E('input', { 'class': 'cbi-button cbi-button-action', 'type': 'submit', 'value': _('Upload upgrade') }),
+        E('button', {
+          'class': 'btn cbi-button',
+          'click': ui.createHandlerFn(this, function() {
+            return fs.exec('/usr/share/stargate/stargate.sh', [ 'singbox-rollback' ])
+              .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Rollback'))); })
+              .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
+          })
+        }, _('Rollback'))
+      ]);
+    };
 
-    var actions = ops.option(form.DummyValue, '_actions', _('Maintenance actions'));
+    var backup = m.section(form.NamedSection, 'global', 'global', '');
+    backup.anonymous = true;
+
+    var actions = backup.option(form.DummyValue, '_actions', '');
     actions.rawhtml = true;
     actions.cfgvalue = function() {
-      var blocked = !status.node_ready;
-      var blockedNote = _('Blocked until an active node is configured on the Node page.');
-
-      function actionButton(label, note, command, args, cls, requiresNode) {
-        var disabled = !!requiresNode && blocked;
-        return E('div', { 'class': 'stargate-component-action' }, [
-          E('button', {
-            'class': 'btn cbi-button ' + (cls || 'cbi-button-neutral'),
-            'disabled': disabled ? '' : null,
-            'click': ui.createHandlerFn(this, function() {
-              if (disabled)
-                return;
-              return fs.exec(command, args)
-                .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || label)); })
-                .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
-            })
-          }, [ label ]),
-          E('div', { 'class': 'stargate-component-note' }, disabled ? [ note, E('br'), E('strong', {}, blockedNote) ] : note)
-        ]);
-      }
-
-      return E('div', { 'class': 'stargate-component-actions' }, [
+      return E('div', { 'class': 'stargate-maint' }, [
         E('style', {}, [
-          '.stargate-component-actions{display:grid;gap:10px;max-width:920px}',
-          '.stargate-component-action{display:grid;grid-template-columns:120px 1fr;gap:12px;align-items:center;padding:12px;border-top:1px solid rgba(127,127,127,.18)}',
-          '.stargate-component-note{font-size:12px;opacity:.76;line-height:1.45}',
-          '@media screen and (max-width:720px){.stargate-component-action{grid-template-columns:1fr}}'
+          '#cbi-stargate-global-_actions{display:block;margin:0;padding:0;border:0}',
+          '#cbi-stargate-global-_actions>.cbi-value-title{display:none}',
+          '#cbi-stargate-global-_actions>.cbi-value-field{display:block;margin:0;width:100%}'
         ].join('')),
-        actionButton(_('Generate'), _('Build the next sing-box config from UCI. It only writes the staging file and does not start the service.'), '/usr/share/stargate/stargate.sh', [ 'generate' ], null, true),
-        actionButton(_('Check'), _('Run sing-box check against the staging config before it becomes active.'), '/usr/share/stargate/stargate.sh', [ 'check' ], null, true),
-        actionButton(_('Apply'), _('Validate and replace the active config. It does not enable transparent proxy or change firewall rules.'), '/usr/share/stargate/stargate.sh', [ 'apply' ], 'cbi-button-apply', true),
-        actionButton(_('Restart'), _('Restart only the Stargate sing-box service with the current active config.'), '/etc/init.d/stargate', [ 'restart' ], 'cbi-button-action', true),
-        actionButton(_('Rollback'), _('Restore the last backup config created before Apply. If Stargate is running, it restarts with the restored config.'), '/usr/share/stargate/stargate.sh', [ 'rollback' ], null, false)
+        E('div', { 'class': 'stargate-maint-panel' }, [
+          E('div', { 'class': 'stargate-maint-head' }, E('div', { 'class': 'stargate-maint-title' }, _('Backup restore'))),
+          E('div', { 'class': 'stargate-maint-row' }, [
+            E('div', { 'class': 'stargate-maint-label' }, _('Create backup file')),
+            E('div', { 'class': 'stargate-maint-control' }, E('a', { 'class': 'cbi-button cbi-button-apply', 'href': L.url('admin/services/stargate/backup_download') }, _('Download backup')))
+          ]),
+          E('form', { 'class': 'stargate-maint-row', 'method': 'post', 'action': L.url('admin/services/stargate/backup_restore'), 'enctype': 'multipart/form-data' }, [
+            E('div', { 'class': 'stargate-maint-label' }, _('Restore backup file')),
+            E('div', { 'class': 'stargate-maint-control' }, [
+              E('input', { 'type': 'file', 'name': 'archive', 'accept': '.tar.gz,.tgz,application/gzip' }),
+              E('input', { 'type': 'hidden', 'name': 'restore', 'value': '1' }),
+              E('input', { 'class': 'cbi-button cbi-button-action', 'type': 'submit', 'value': _('Restore backup') })
+            ])
+          ]),
+          E('div', { 'class': 'stargate-maint-row' }, [
+            E('div', { 'class': 'stargate-maint-label' }, _('Restore default config')),
+            E('div', { 'class': 'stargate-maint-control' }, E('button', {
+              'class': 'btn cbi-button cbi-button-negative',
+              'click': ui.createHandlerFn(this, function() {
+                if (!confirm(_('Reset Stargate config to defaults and stop the service?')))
+                  return;
+                return fs.exec('/usr/share/stargate/stargate.sh', [ 'reset-defaults' ])
+                  .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Reset'))); })
+                  .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
+              })
+            }, _('Reset')))
+          ]),
+          E('div', { 'class': 'stargate-maint-row' }, [
+            E('div', { 'class': 'stargate-maint-label' }, _('Rollback generated config')),
+            E('div', { 'class': 'stargate-maint-control' }, E('button', {
+              'class': 'btn cbi-button',
+              'click': ui.createHandlerFn(this, function() {
+                return fs.exec('/usr/share/stargate/stargate.sh', [ 'rollback' ])
+                  .then(function(res) { ui.addNotification(null, E('p', {}, res.stdout || _('Rollback'))); })
+                  .catch(function(err) { ui.addNotification(null, E('p', {}, err.message), 'danger'); });
+              })
+            }, _('Rollback')))
+          ])
+        ])
       ]);
     };
 

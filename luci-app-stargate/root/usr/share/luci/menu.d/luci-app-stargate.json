@@ -57,7 +57,7 @@
     }
   },
   "admin/services/stargate/component": {
-    "title": "Component Settings",
+    "title": "Maintenance",
     "translate": "stargate",
     "order": 50,
     "action": {

@@ -13,12 +13,24 @@ function index()
   entry({"admin", "services", "stargate", "node"}, cbi("stargate/client/node"), _("Node"), 20).leaf = true
   entry({"admin", "services", "stargate", "dns"}, cbi("stargate/client/dns"), _("DNS"), 30).leaf = true
   entry({"admin", "services", "stargate", "rules"}, cbi("stargate/client/rules"), _("Rules"), 40).leaf = true
-  entry({"admin", "services", "stargate", "component"}, cbi("stargate/client/component"), _("Component Settings"), 50).leaf = true
+  entry({"admin", "services", "stargate", "component"}, cbi("stargate/client/component"), _("Maintenance"), 50).leaf = true
   entry({"admin", "services", "stargate", "logs"}, cbi("stargate/client/logs"), _("Logs"), 60).leaf = true
 
   local probe = entry({"admin", "services", "stargate", "connect_status"}, call("connect_status"))
   probe.leaf = true
   probe.acl_depends = { "luci-app-stargate" }
+
+  local backup = entry({"admin", "services", "stargate", "backup_download"}, call("backup_download"))
+  backup.leaf = true
+  backup.acl_depends = { "luci-app-stargate" }
+
+  local restore = entry({"admin", "services", "stargate", "backup_restore"}, call("backup_restore"))
+  restore.leaf = true
+  restore.acl_depends = { "luci-app-stargate" }
+
+  local singbox = entry({"admin", "services", "stargate", "singbox_upgrade"}, call("singbox_upgrade"))
+  singbox.leaf = true
+  singbox.acl_depends = { "luci-app-stargate" }
 end
 
 local function shellquote(value)
@@ -101,4 +113,110 @@ function connect_status()
 
   http.prepare_content("application/json")
   http.write(jsonc.stringify(result))
+end
+
+function backup_download()
+  local http = require "luci.http"
+  local fs = require "nixio.fs"
+  local sys = require "luci.sys"
+
+  local file = "/tmp/stargate-backup-" .. os.date("%Y%m%d-%H%M%S") .. ".tar.gz"
+  local output = sys.exec("/usr/share/stargate/stargate.sh backup-create " .. shellquote(file) .. " 2>&1")
+  if not fs.access(file) then
+    http.status(500, "Backup failed")
+    http.prepare_content("text/plain")
+    http.write(output)
+    return
+  end
+
+  http.header("Content-Disposition", "attachment; filename=\"" .. file:match("([^/]+)$") .. "\"")
+  http.prepare_content("application/gzip")
+  local fp = io.open(file, "rb")
+  if fp then
+    while true do
+      local chunk = fp:read(4096)
+      if not chunk then
+        break
+      end
+      http.write(chunk)
+    end
+    fp:close()
+  end
+  fs.unlink(file)
+end
+
+function backup_restore()
+  local http = require "luci.http"
+  local sys = require "luci.sys"
+  local util = require "luci.util"
+  local jsonc = require "luci.jsonc"
+
+  local upload = "/tmp/stargate-restore-upload.tar.gz"
+  local fp
+
+  http.setfilehandler(function(meta, chunk, eof)
+    if meta and meta.name == "archive" then
+      if not fp then
+        fp = io.open(upload, "wb")
+      end
+      if chunk and fp then
+        fp:write(chunk)
+      end
+      if eof and fp then
+        fp:close()
+        fp = nil
+      end
+    end
+  end)
+
+  local output = ""
+  local ok = false
+  if http.formvalue("restore") then
+    output = sys.exec("/usr/share/stargate/stargate.sh backup-restore " .. shellquote(upload) .. " 2>&1")
+    ok = not output:match("[Ee]rror") and not output:match("[Ff]ailed") and not output:match("invalid") and not output:match("missing")
+  else
+    output = "missing restore request"
+  end
+  os.remove(upload)
+
+  http.prepare_content("application/json")
+  http.write(jsonc.stringify({ ok = ok, output = util.trim(output) }))
+end
+
+function singbox_upgrade()
+  local http = require "luci.http"
+  local sys = require "luci.sys"
+  local util = require "luci.util"
+  local jsonc = require "luci.jsonc"
+
+  local upload = "/tmp/stargate-sing-box-upload"
+  local fp
+
+  http.setfilehandler(function(meta, chunk, eof)
+    if meta and meta.name == "binary" then
+      if not fp then
+        fp = io.open(upload, "wb")
+      end
+      if chunk and fp then
+        fp:write(chunk)
+      end
+      if eof and fp then
+        fp:close()
+        fp = nil
+      end
+    end
+  end)
+
+  local output = ""
+  local ok = false
+  if http.formvalue("upgrade") then
+    output = sys.exec("/usr/share/stargate/stargate.sh singbox-upgrade " .. shellquote(upload) .. " 2>&1")
+    ok = not output:match("[Ee]rror") and not output:match("[Ff]ailed") and not output:match("missing") and not output:match("not a runnable")
+  else
+    output = "missing upgrade request"
+  end
+  os.remove(upload)
+
+  http.prepare_content("application/json")
+  http.write(jsonc.stringify({ ok = ok, output = util.trim(output) }))
 end

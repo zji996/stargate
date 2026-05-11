@@ -25,7 +25,13 @@
         "/usr/share/stargate/rules/direct.json": [ "write" ],
         "/usr/share/stargate/rules/proxy.json": [ "write" ],
         "/usr/share/stargate/stargate.sh": [ "exec" ],
-        "/etc/init.d/stargate": [ "exec" ]
+        "/etc/init.d/stargate": [ "exec" ],
+        "/tmp/stargate-restore-upload.tar.gz": [ "write" ],
+        "/tmp/stargate-sing-box-upload": [ "write" ],
+        "/tmp/stargate-sing-box.new": [ "write" ],
+        "/tmp/stargate-backup-*.tar.gz": [ "read", "write" ],
+        "/tmp/stargate-before-reset-*.tar.gz": [ "write" ],
+        "/tmp/stargate-*.tar.gz": [ "read", "write" ]
       }
     }
   }
