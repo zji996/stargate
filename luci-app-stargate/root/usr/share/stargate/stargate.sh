@@ -40,6 +40,8 @@ Usage:
   /usr/share/stargate/stargate.sh singbox-upgrade uploaded-binary
   /usr/share/stargate/stargate.sh singbox-rollback
   /usr/share/stargate/stargate.sh logs
+  /usr/share/stargate/stargate.sh logs-raw
+  /usr/share/stargate/stargate.sh logs-clear
 USAGE
 }
 
@@ -1318,7 +1320,21 @@ probe_url() {
 }
 
 logs_text() {
-  logread -e stargate -e sing-box 2>/dev/null | tail -160 || true
+  logread -e stargate -e sing-box 2>/dev/null |
+    sed 's/\x1b\[[0-9;]*m//g' |
+    grep -v 'using outbound/direct\[direct\]: dial tcp .*: i/o timeout' |
+    tail -160 || true
+}
+
+logs_raw() {
+  logread -e stargate -e sing-box 2>/dev/null |
+    sed 's/\x1b\[[0-9;]*m//g' |
+    tail -220 || true
+}
+
+logs_clear() {
+  logread -c
+  echo "logs cleared"
 }
 
 firewall_lan_ifaces() {
@@ -1684,6 +1700,8 @@ case "$action" in
   singbox-upgrade) singbox_upgrade "${2:-}" ;;
   singbox-rollback) singbox_rollback ;;
   logs) logs_text ;;
+  logs-raw) logs_raw ;;
+  logs-clear) logs_clear ;;
   -h|--help|help|"") usage ;;
   *) usage >&2; exit 2 ;;
 esac
