@@ -2,18 +2,10 @@ local sys = require "luci.sys"
 local util = require "luci.util"
 local http = require "luci.http"
 local dispatcher = require "luci.dispatcher"
+local common = require "luci.model.stargate.common"
 
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
-
-local function ui_text(en, zh)
-  local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
-  if lang == "zh_cn" or lang == "zh-cn" or lang == "zh" or lang == "auto" then
-    return zh
-  end
-  return en
-end
+local trim = common.trim
+local ui_text = common.ui_text
 
 m = Map("stargate", ui_text("Logs", "日志"))
 m.description = ui_text("Recent Stargate and sing-box logs.", "最近的 Stargate 和 sing-box 日志。")

@@ -1,25 +1,14 @@
 local sys = require "luci.sys"
 local util = require "luci.util"
 local dispatcher = require "luci.dispatcher"
+local common = require "luci.model.stargate.common"
 
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
-
-local function shellquote(value)
-  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
+local trim = common.trim
+local shellquote = common.shellquote
+local ui_text = common.ui_text
 
 m = Map("stargate", translate("Stargate"))
 m.description = translate("Runtime status, proxy mode, and local outlet checks.")
-
-local function ui_text(en, zh)
-  local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
-  if lang == "zh_cn" or lang == "zh-cn" or lang == "zh" or lang == "auto" then
-    return zh
-  end
-  return en
-end
 
 local function has_active_node()
   local server = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null"))

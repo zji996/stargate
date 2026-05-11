@@ -1,5 +1,6 @@
 module("luci.controller.stargate", package.seeall)
 
+local common = require "luci.model.stargate.common"
 local backup_tmp_prefix = "/tmp/stargate-backup-"
 local restore_upload = "/tmp/stargate-restore-upload.tar.gz"
 local singbox_upload = "/tmp/stargate-sing-box-upload"
@@ -42,18 +43,14 @@ function index()
   rules.acl_depends = { "luci-app-stargate" }
 end
 
-local function shellquote(value)
-  return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
-end
+local shellquote = common.shellquote
 
 local function millis(value)
   local number = tonumber(value) or 0
   return math.floor(number * 1000 + 0.5)
 end
 
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
+local trim = common.trim
 
 local function uci_get(config, section, option, default)
   local sys = require "luci.sys"

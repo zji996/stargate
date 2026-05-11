@@ -2,41 +2,21 @@ local sys = require "luci.sys"
 local http = require "luci.http"
 local util = require "luci.util"
 local dispatcher = require "luci.dispatcher"
+local common = require "luci.model.stargate.common"
 
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
-
-local function ui_text(en, zh)
-  local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
-  if lang == "zh_cn" or lang == "zh-cn" or lang == "zh" or lang == "auto" then
-    return zh
-  end
-  return en
-end
-
-local function parse_status_rows(output)
-  local rows = {}
-  for line in (output or ""):gmatch("[^\r\n]+") do
-    local key, value = line:match("^([^:]+):%s*(.*)$")
-    if key and value then
-      rows[#rows + 1] = { key, value }
-    end
-  end
-  return rows
-end
+local trim = common.trim
+local ui_text = common.ui_text
+local rule_modes = { "blacklist", "whitelist" }
 
 local function rule_status_html(message)
   local status = trim(sys.exec("/usr/share/stargate/stargate.sh rules-status 2>/dev/null"))
   local parts = {}
   if message and message ~= "" then
-    parts[#parts + 1] = '<div class="stargate-rule-ok">' .. util.pcdata(message) .. '</div>'
+    parts[#parts + 1] = '<div class="stargate-rule-ok">' .. common.pc(message) .. '</div>'
   end
-  for line in status:gmatch("[^\r\n]+") do
-    local key, value = line:match("^([^:]+):%s*(.*)$")
-    if key and value then
-      parts[#parts + 1] = '<div class="stargate-rule-status-row"><span>' .. util.pcdata(key) .. '</span><strong>' .. util.pcdata(value) .. '</strong></div>'
-    end
+  local status_html = common.status_rows_html(common.status_rows(status), "stargate-rule-status-row")
+  if status_html ~= "" then
+    parts[#parts + 1] = status_html
   end
   if #parts == 0 then
     parts[#parts + 1] = '<div class="stargate-rule-status-row"><span>' .. ui_text("Rule files", "规则文件") .. '</span><strong>' .. ui_text("Not updated", "未更新") .. '</strong></div>'
@@ -45,18 +25,18 @@ local function rule_status_html(message)
 end
 
 local function rule_rows_html(rows)
-  local parts = {}
   if #rows == 0 then
     return ""
   end
-  for _, row in ipairs(rows) do
-    parts[#parts + 1] = '<div class="stargate-rule-status-row"><span>' .. util.pcdata(row[1]) .. '</span><strong>' .. util.pcdata(row[2]) .. '</strong></div>'
-  end
-  return '<div class="stargate-rule-test-result">' .. table.concat(parts, "\n") .. '</div>'
+  return '<div class="stargate-rule-test-result">' .. common.status_rows_html(rows, "stargate-rule-status-row") .. '</div>'
 end
 
 local function rule_test_html(output)
-  return rule_rows_html(parse_status_rows(output))
+  return rule_rows_html(common.status_rows(output))
+end
+
+local function depends_rule_mode(option)
+  common.depends_any(option, "mode", rule_modes)
 end
 
 m = Map("stargate", translate("Rules"))
@@ -89,51 +69,43 @@ mode.description = ui_text("Blacklist: default direct, listed proxy domains use 
 source = s:option(ListValue, "source", translate("Rule source"))
 source:value("loyalsoldier", "Loyalsoldier/v2ray-rules-dat")
 source.default = "loyalsoldier"
-source:depends("mode", "blacklist")
-source:depends("mode", "whitelist")
+depends_rule_mode(source)
 
 source_base_url = s:option(Value, "source_base_url", translate("Source base URL"))
 source_base_url.default = "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release"
-source_base_url:depends("mode", "blacklist")
-source_base_url:depends("mode", "whitelist")
+depends_rule_mode(source_base_url)
 
 direct_rule_set = s:option(Value, "direct_rule_set", translate("Direct rule-set path"))
 direct_rule_set.default = "/usr/share/stargate/rules/direct.json"
-direct_rule_set:depends("mode", "blacklist")
-direct_rule_set:depends("mode", "whitelist")
+depends_rule_mode(direct_rule_set)
 
 proxy_rule_set = s:option(Value, "proxy_rule_set", translate("Proxy rule-set path"))
 proxy_rule_set.default = "/usr/share/stargate/rules/proxy.json"
-proxy_rule_set:depends("mode", "blacklist")
-proxy_rule_set:depends("mode", "whitelist")
+depends_rule_mode(proxy_rule_set)
 
 custom_direct_domains = s:option(TextValue, "custom_direct_domains", translate("User direct domains"))
 custom_direct_domains.rows = 5
 custom_direct_domains.wrap = "off"
 custom_direct_domains.description = ui_text("One domain per line. These domains always go direct and take priority over the base rules.", "每行一个域名。这些域名始终直连，并优先于基础规则。")
-custom_direct_domains:depends("mode", "blacklist")
-custom_direct_domains:depends("mode", "whitelist")
+depends_rule_mode(custom_direct_domains)
 
 custom_proxy_domains = s:option(TextValue, "custom_proxy_domains", translate("User proxy domains"))
 custom_proxy_domains.rows = 5
 custom_proxy_domains.wrap = "off"
 custom_proxy_domains.description = ui_text("One domain per line. These domains always use the node and take priority over the base rules.", "每行一个域名。这些域名始终走节点，并优先于基础规则。")
-custom_proxy_domains:depends("mode", "blacklist")
-custom_proxy_domains:depends("mode", "whitelist")
+depends_rule_mode(custom_proxy_domains)
 
 custom_direct_ips = s:option(TextValue, "custom_direct_ips", translate("User direct IP/CIDR"))
 custom_direct_ips.rows = 4
 custom_direct_ips.wrap = "off"
 custom_direct_ips.description = ui_text("One IPv4 or CIDR per line. These IP ranges always go direct.", "每行一个 IPv4 或 CIDR。这些 IP 段始终直连。")
-custom_direct_ips:depends("mode", "blacklist")
-custom_direct_ips:depends("mode", "whitelist")
+depends_rule_mode(custom_direct_ips)
 
 custom_proxy_ips = s:option(TextValue, "custom_proxy_ips", translate("User proxy IP/CIDR"))
 custom_proxy_ips.rows = 4
 custom_proxy_ips.wrap = "off"
 custom_proxy_ips.description = ui_text("One IPv4 or CIDR per line. Use this for services that connect by IP and should not go direct.", "每行一个 IPv4 或 CIDR。适合直接连接 IP、但不应直连的服务。")
-custom_proxy_ips:depends("mode", "blacklist")
-custom_proxy_ips:depends("mode", "whitelist")
+depends_rule_mode(custom_proxy_ips)
 
 actions = s:option(DummyValue, "_rules_actions", translate("Rule actions"))
 actions.rawhtml = true
@@ -159,7 +131,7 @@ function actions.cfgvalue()
     '</div>',
     '<div class="stargate-rule-status">' .. rule_status_html(message) .. '</div>',
     '<div class="stargate-rule-test">',
-    '<input id="stargate-rules-target" class="cbi-input-text" type="text" value="' .. util.pcdata(test_target) .. '" placeholder="' .. ui_text("Domain or IP", "域名或 IP") .. '" />',
+    '<input id="stargate-rules-target" class="cbi-input-text" type="text" value="' .. common.pc(test_target) .. '" placeholder="' .. ui_text("Domain or IP", "域名或 IP") .. '" />',
     '<input class="cbi-button" type="button" value="' .. ui_text("Test policy", "测试策略") .. '" onclick="stargateRulesTestPolicy()" />',
     rule_test_html(test_output),
     '</div>',

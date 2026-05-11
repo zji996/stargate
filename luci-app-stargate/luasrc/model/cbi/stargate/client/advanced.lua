@@ -2,18 +2,10 @@ local sys = require "luci.sys"
 local http = require "luci.http"
 local util = require "luci.util"
 local dispatcher = require "luci.dispatcher"
+local common = require "luci.model.stargate.common"
 
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
-
-local function ui_text(en, zh)
-  local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
-  if lang == "zh_cn" or lang == "zh-cn" or lang == "zh" or lang == "auto" then
-    return zh
-  end
-  return en
-end
+local trim = common.trim
+local ui_text = common.ui_text
 
 m = Map("stargate", ui_text("Advanced", "高级"))
 m.description = ui_text("Forwarding and system integration settings for transparent proxy.", "透明代理的转发和系统集成设置。")

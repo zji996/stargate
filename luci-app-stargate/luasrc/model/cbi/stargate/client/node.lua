@@ -2,13 +2,14 @@ local sys = require "luci.sys"
 local http = require "luci.http"
 local util = require "luci.util"
 local dispatcher = require "luci.dispatcher"
+local common = require "luci.model.stargate.common"
 
 m = Map("stargate", translate("Node"))
 m.description = translate("Manage a small AnyTLS node list. Use a node to copy it into the active sing-box config.")
 
-local function pc(value)
-  return util.pcdata(value or "")
-end
+local pc = common.pc
+local trim = common.trim
+local ui_text = common.ui_text
 
 local function jsq(value)
   value = value or ""
@@ -17,18 +18,6 @@ local function jsq(value)
   value = value:gsub("\r", "\\r")
   value = value:gsub("\n", "\\n")
   return pc(value)
-end
-
-local function trim(value)
-  return (value or ""):gsub("%s+$", "")
-end
-
-local function ui_text(en, zh)
-  local lang = trim(sys.exec("uci -q get luci.main.lang 2>/dev/null || echo auto"))
-  if lang == "zh_cn" or lang == "zh-cn" or lang == "zh" or lang == "auto" then
-    return zh
-  end
-  return en
 end
 
 local function uci_get(section, option, default)
