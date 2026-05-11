@@ -474,6 +474,9 @@ msgstr ""
 msgid "Rules updated successfully."
 msgstr ""
 
+msgid "Rule update started. Refresh status in a moment."
+msgstr ""
+
 msgid "Rule status refreshed."
 msgstr ""
 
@@ -481,6 +484,9 @@ msgid "Private IP direct"
 msgstr ""
 
 msgid "Block QUIC"
+msgstr ""
+
+msgid "Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC."
 msgstr ""
 
 msgid "Transparent proxy"

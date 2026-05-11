@@ -7,6 +7,7 @@ config_file="$work_dir/config.json"
 next_file="$config_file.next"
 backup_file="$config_file.bak"
 singbox_bin="/usr/bin/sing-box"
+tmp_prefix="/tmp/stargate"
 
 usage() {
   cat <<'USAGE'
@@ -27,6 +28,7 @@ Usage:
   /usr/share/stargate/stargate.sh node-use id
   /usr/share/stargate/stargate.sh node-delete id
   /usr/share/stargate/stargate.sh rules-update
+  /usr/share/stargate/stargate.sh rules-update-start
   /usr/share/stargate/stargate.sh rules-status
   /usr/share/stargate/stargate.sh backup-create [output.tar.gz]
   /usr/share/stargate/stargate.sh backup-restore input.tar.gz
@@ -36,6 +38,10 @@ Usage:
   /usr/share/stargate/stargate.sh logs
 USAGE
 }
+
+rules_update_pid_file="$tmp_prefix-rules-update.pid"
+rules_update_status_file="$tmp_prefix-rules-update.status"
+rules_update_log_file="$tmp_prefix-rules-update.log"
 
 json_escape() {
   sed 's/\\/\\\\/g; s/"/\\"/g'
@@ -454,9 +460,28 @@ rules_status() {
   load_config
   direct_count="not updated"
   proxy_count="not updated"
+  update_state="idle"
+  update_last=""
+  saved_state=""
+  [ -s "$rules_update_status_file" ] && saved_state="$(cat "$rules_update_status_file" 2>/dev/null || true)"
+  if [ -s "$rules_update_pid_file" ]; then
+    update_pid="$(cat "$rules_update_pid_file" 2>/dev/null || true)"
+    if [ "$saved_state" = "running" ] && [ -n "$update_pid" ] && kill -0 "$update_pid" 2>/dev/null; then
+      update_state="running"
+    elif [ -n "$saved_state" ]; then
+      update_state="$saved_state"
+    fi
+  elif [ -n "$saved_state" ]; then
+    update_state="$saved_state"
+  fi
+  if [ -s "$rules_update_log_file" ]; then
+    update_last="$(awk 'NF { line = $0 } END { print line }' "$rules_update_log_file" 2>/dev/null || true)"
+  fi
   [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
   [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
   printf 'Rule source: Loyalsoldier/v2ray-rules-dat\n'
+  printf 'Rule update: %s\n' "$update_state"
+  [ -z "$update_last" ] || printf 'Last update: %s\n' "$update_last"
   printf 'Direct list: %s\n' "$direct_count"
   printf 'Proxy list: %s\n' "$proxy_count"
 }
@@ -514,6 +539,21 @@ write_rule_set_json() {
   mv "$tmp" "$output"
 }
 
+fetch_rule_list() {
+  url="$1"
+  output="$2"
+  attempt=1
+  while [ "$attempt" -le 3 ]; do
+    if curl -fsSL --connect-timeout 8 --max-time 180 "$url" -o "$output"; then
+      return 0
+    fi
+    rm -f "$output"
+    attempt=$((attempt + 1))
+    sleep 2
+  done
+  return 1
+}
+
 rules_update() {
   load_config
   [ "$rules_source" = "loyalsoldier" ] || {
@@ -528,13 +568,46 @@ rules_update() {
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
   base="${rules_source_base_url%/}"
-  curl -fsSL --connect-timeout 8 --max-time 60 "$base/direct-list.txt" -o "$tmp_dir/direct-list.txt"
-  curl -fsSL --connect-timeout 8 --max-time 60 "$base/proxy-list.txt" -o "$tmp_dir/proxy-list.txt"
+  fetch_rule_list "$base/direct-list.txt" "$tmp_dir/direct-list.txt"
+  fetch_rule_list "$base/proxy-list.txt" "$tmp_dir/proxy-list.txt"
   [ -s "$tmp_dir/direct-list.txt" ] || { echo "downloaded direct list is empty" >&2; exit 1; }
   [ -s "$tmp_dir/proxy-list.txt" ] || { echo "downloaded proxy list is empty" >&2; exit 1; }
   write_rule_set_json "$tmp_dir/direct-list.txt" "$rules_direct_rule_set"
   write_rule_set_json "$tmp_dir/proxy-list.txt" "$rules_proxy_rule_set"
   echo "Rules updated."
+  rules_status
+}
+
+rules_update_start() {
+  if [ -s "$rules_update_pid_file" ]; then
+    update_pid="$(cat "$rules_update_pid_file" 2>/dev/null || true)"
+    update_state="$(cat "$rules_update_status_file" 2>/dev/null || true)"
+    if [ "$update_state" = "running" ] && [ -n "$update_pid" ] && kill -0 "$update_pid" 2>/dev/null; then
+      echo "Rule update is already running."
+      rules_status
+      return 0
+    fi
+  fi
+
+  rm -f "$rules_update_pid_file"
+  printf 'running\n' >"$rules_update_status_file"
+  {
+    printf 'Started at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  } >"$rules_update_log_file"
+
+  (
+    trap '' HUP
+    if "$0" rules-update >>"$rules_update_log_file" 2>&1; then
+      printf 'success\n' >"$rules_update_status_file"
+    else
+      code="$?"
+      printf 'failed (%s)\n' "$code" >"$rules_update_status_file"
+    fi
+    rm -f "$rules_update_pid_file"
+  ) </dev/null >/dev/null 2>&1 &
+  printf '%s\n' "$!" >"$rules_update_pid_file"
+
+  echo "Rule update started."
   rules_status
 }
 
@@ -1178,6 +1251,7 @@ case "$action" in
   node-use) node_use "${2:-}" ;;
   node-delete) node_delete "${2:-}" ;;
   rules-update) rules_update ;;
+  rules-update-start) rules_update_start ;;
   rules-status) rules_status ;;
   backup-create) backup_create "${2:-}" ;;
   backup-restore) backup_restore "${2:-}" ;;

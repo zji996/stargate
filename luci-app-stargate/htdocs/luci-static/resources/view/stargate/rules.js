@@ -105,13 +105,10 @@ return view.extend({
             'class': 'btn cbi-button cbi-button-apply',
             'click': ui.createHandlerFn(this, function(ev) {
               var container = ev.currentTarget.closest('.stargate-rule-actions');
-              return fs.exec('/usr/share/stargate/stargate.sh', [ 'rules-update' ])
-                .then(function() {
-                  return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'rules-status' ]);
-                })
+              return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'rules-update-start' ])
                 .then(function(text) {
                   var old = container.querySelector('.stargate-rule-status');
-                  old.parentNode.replaceChild(statusView(text, _('Rules updated successfully.')), old);
+                  old.parentNode.replaceChild(statusView(text, _('Rule update started. Refresh status in a moment.')), old);
                 })
                 .catch(function(err) { ui.addNotification(null, E('pre', {}, err.message), 'danger'); });
             })
@@ -141,6 +138,7 @@ return view.extend({
     var blockQuic = s.option(form.Flag, 'block_quic', _('Block QUIC'));
     blockQuic.default = '0';
     blockQuic.rmempty = false;
+    blockQuic.description = _('Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC.');
 
     return m.render();
   }

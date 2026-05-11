@@ -475,6 +475,9 @@ msgstr "未更新"
 msgid "Rules updated successfully."
 msgstr "规则已更新成功。"
 
+msgid "Rule update started. Refresh status in a moment."
+msgstr "规则更新已开始，稍后刷新状态查看结果。"
+
 msgid "Rule status refreshed."
 msgstr "规则状态已刷新。"
 
@@ -483,6 +486,9 @@ msgstr "私有 IP 直连"
 
 msgid "Block QUIC"
 msgstr "阻断 QUIC"
+
+msgid "Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC."
+msgstr "拒绝 UDP/443，让浏览器和应用从 HTTP/3/QUIC 回退到 TCP/TLS。这样代理分流更可预测，但可能降低依赖 QUIC 的服务速度。"
 
 msgid "Transparent proxy"
 msgstr "透明代理"

@@ -39,12 +39,8 @@ m.description = ui_text("Use Loyalsoldier as the base rule source. Pick a blackl
 local message = nil
 local action = http.formvalue("stargate_rules_action")
 if action == "update" then
-  local output = trim(sys.exec("/usr/share/stargate/stargate.sh rules-update 2>&1"))
-  if output:match("^Rules updated") or output:match("^规则已更新") then
-    message = ui_text("Rules updated successfully.", "规则已更新成功。")
-  else
-    message = output
-  end
+  sys.exec("/usr/share/stargate/stargate.sh rules-update-start >/dev/null 2>&1")
+  message = ui_text("Rule update started. Refresh status in a moment.", "规则更新已开始，稍后刷新状态查看结果。")
 elseif action == "status" then
   message = ui_text("Rule status refreshed.", "规则状态已刷新。")
 end
@@ -128,5 +124,6 @@ private_direct.rmempty = false
 block_quic = s:option(Flag, "block_quic", translate("Block QUIC"))
 block_quic.default = "0"
 block_quic.rmempty = false
+block_quic.description = ui_text("Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC.", "拒绝 UDP/443，让浏览器和应用从 HTTP/3/QUIC 回退到 TCP/TLS。这样代理分流更可预测，但可能降低依赖 QUIC 的服务速度。")
 
 return m
