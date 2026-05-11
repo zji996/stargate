@@ -7,6 +7,7 @@ Usage:
   sh manage.sh check
   sh manage.sh check shell
   sh manage.sh check docs
+  sh manage.sh check secrets
 USAGE
 }
 
@@ -79,6 +80,22 @@ check_i18n() {
   python3 tools/po2lmo.py luci-app-stargate/po/zh-cn/stargate.po /tmp/stargate.zh-cn.lmo
 }
 
+check_secrets() {
+  if rg -n -I \
+    -e '192\.168\.[0-9]{1,3}\.[1-9][0-9]{0,2}' \
+    -e '[0-9]{6,12}Qwe' \
+    -e 'ssh''pass' \
+    -e 'root@''192\.' \
+    -e 'Bleach''Wrt' \
+    -e 'R[0-9]{2}\.[0-9]{2}' \
+    --glob '!third_party/**' \
+    --glob '!.git/**' \
+    .; then
+    echo "potential environment-specific secret or hardcoding found" >&2
+    return 1
+  fi
+}
+
 action="${1:-}"
 target="${2:-all}"
 
@@ -89,6 +106,7 @@ case "$action:$target" in
     check_json
     check_js
     check_i18n
+    check_secrets
     ;;
   check:shell)
     check_shell
@@ -104,6 +122,9 @@ case "$action:$target" in
     ;;
   check:i18n)
     check_i18n
+    ;;
+  check:secrets)
+    check_secrets
     ;;
   -h:*|--help:*|help:*|:"")
     usage
