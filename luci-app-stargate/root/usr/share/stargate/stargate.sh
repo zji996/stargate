@@ -1195,7 +1195,7 @@ start_transparent_proxy() {
   uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
   uci_cmd set "$app.inbound.transparent_port=$port"
   uci_commit
-  if apply_config && restart_service_with_rollback && firewall_apply; then
+  if apply_config && restart_service_with_rollback && firewall_apply_rules; then
     echo "started transparent proxy mode: $mode"
   else
     rc=$?
@@ -1301,6 +1301,9 @@ logs_text() {
 
 firewall_lan_ifaces() {
   ifaces="$(uci -q get network.lan.device 2>/dev/null || true)"
+  if [ -z "$ifaces" ] && [ "$(uci -q get network.lan.type 2>/dev/null || true)" = "bridge" ] && ip link show br-lan >/dev/null 2>&1; then
+    ifaces="br-lan"
+  fi
   [ -n "$ifaces" ] || ifaces="$(uci -q get network.lan.ifname 2>/dev/null || true)"
   [ -n "$ifaces" ] || ifaces="br-lan"
   printf '%s\n' $ifaces
@@ -1396,7 +1399,7 @@ firewall_backend() {
   fi
 }
 
-firewall_apply() {
+firewall_apply_rules() {
   load_config
   if [ "$transparent_proxy" != "1" ]; then
     firewall_clean
@@ -1411,6 +1414,19 @@ firewall_apply() {
     *) echo "no supported firewall backend found" >&2; return 1 ;;
   esac
   echo "firewall applied with $backend"
+}
+
+firewall_apply() {
+  load_config
+  if [ "$transparent_proxy" != "1" ]; then
+    firewall_clean
+    echo "firewall cleaned; transparent proxy is disabled"
+    return 0
+  fi
+  validate_config
+  apply_config
+  restart_service_with_rollback
+  firewall_apply_rules
 }
 
 firewall_clean() {
