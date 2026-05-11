@@ -119,10 +119,9 @@ Stargate 的代码、构建、安装和运行都不能直接依赖 `third_party/
 
 ## 路由器实测基线
 
-- OpenWrt: 24.10.3
-- 架构: `aarch64_cortex-a53`
-- 内核: 6.12.58
-- sing-box: 1.13.11
+- OpenWrt: 24 系列
+- 架构: aarch64 路由器
+- sing-box: 1.13 系列
 - AnyTLS 服务端形态: `SERVER_HOST:8443`
 - AnyTLS URI 形态: `anytls://PASSWORD@SERVER_HOST:8443/?insecure=1`
 

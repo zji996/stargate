@@ -1,5 +1,9 @@
 module("luci.controller.stargate", package.seeall)
 
+local backup_tmp_prefix = "/tmp/stargate-backup-"
+local restore_upload = "/tmp/stargate-restore-upload.tar.gz"
+local singbox_upload = "/tmp/stargate-sing-box-upload"
+
 function index()
   if not nixio.fs.access("/etc/config/stargate") then
     return
@@ -52,17 +56,17 @@ function connect_status()
     baidu = {
       name = "Baidu",
       url = "https://www.baidu.com/",
-      route_ip = "180.101.50.242"
+      host = "www.baidu.com"
     },
     google = {
       name = "Google",
       url = "https://www.google.com/generate_204",
-      route_ip = "142.250.72.14"
+      host = "www.google.com"
     },
     github = {
       name = "GitHub",
       url = "https://github.com/",
-      route_ip = "140.82.112.4"
+      host = "github.com"
     }
   }
 
@@ -77,7 +81,12 @@ function connect_status()
   }
 
   if probe then
-    local route = sys.exec("ip route get " .. shellquote(probe.route_ip) .. " 2>/dev/null | head -1")
+    local route_target = sys.exec("resolveip -4 " .. shellquote(probe.host) .. " 2>/dev/null | head -1")
+    route_target = route_target:gsub("%s+$", "")
+    if route_target == "" then
+      route_target = probe.host
+    end
+    local route = sys.exec("ip route get " .. shellquote(route_target) .. " 2>/dev/null | head -1")
     local cmd = table.concat({
       "out=$(curl --noproxy '*' -L -sS -o /dev/null",
       "--connect-timeout 4 --max-time 8",
@@ -120,7 +129,7 @@ function backup_download()
   local fs = require "nixio.fs"
   local sys = require "luci.sys"
 
-  local file = "/tmp/stargate-backup-" .. os.date("%Y%m%d-%H%M%S") .. ".tar.gz"
+  local file = backup_tmp_prefix .. os.date("%Y%m%d-%H%M%S") .. ".tar.gz"
   local output = sys.exec("/usr/share/stargate/stargate.sh backup-create " .. shellquote(file) .. " 2>&1")
   if not fs.access(file) then
     http.status(500, "Backup failed")
@@ -151,7 +160,7 @@ function backup_restore()
   local util = require "luci.util"
   local jsonc = require "luci.jsonc"
 
-  local upload = "/tmp/stargate-restore-upload.tar.gz"
+  local upload = restore_upload
   local fp
 
   http.setfilehandler(function(meta, chunk, eof)
@@ -189,7 +198,7 @@ function singbox_upgrade()
   local util = require "luci.util"
   local jsonc = require "luci.jsonc"
 
-  local upload = "/tmp/stargate-sing-box-upload"
+  local upload = singbox_upload
   local fp
 
   http.setfilehandler(function(meta, chunk, eof)

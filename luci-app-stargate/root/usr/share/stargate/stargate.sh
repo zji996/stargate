@@ -1249,8 +1249,8 @@ firewall_status_json() {
 backup_create() {
   load_config
   output="${1:-}"
-  [ -n "$output" ] || output="/tmp/stargate-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
-  tmp_dir="$(mktemp -d /tmp/stargate-backup.XXXXXX)"
+  [ -n "$output" ] || output="$tmp_prefix-backup-$(date +%Y%m%d-%H%M%S).tar.gz"
+  tmp_dir="$(mktemp -d "$tmp_prefix-backup.XXXXXX")"
   trap 'rm -rf "$tmp_dir"' EXIT INT TERM
 
   mkdir -p "$tmp_dir/etc/config" "$tmp_dir/etc/stargate" "$tmp_dir/usr/share/stargate/rules"
@@ -1278,7 +1278,7 @@ backup_restore() {
     echo "backup archive missing: $archive" >&2
     exit 1
   }
-  tmp_dir="$(mktemp -d /tmp/stargate-restore.XXXXXX)"
+  tmp_dir="$(mktemp -d "$tmp_prefix-restore.XXXXXX")"
   trap 'rm -rf "$tmp_dir"' EXIT INT TERM
   tar -C "$tmp_dir" -xzf "$archive"
 
@@ -1303,7 +1303,7 @@ backup_restore() {
 }
 
 reset_defaults() {
-  backup_create "/tmp/stargate-before-reset-$(date +%Y%m%d-%H%M%S).tar.gz" >/dev/null || true
+  backup_create "$tmp_prefix-before-reset-$(date +%Y%m%d-%H%M%S).tar.gz" >/dev/null || true
   [ -x /etc/init.d/stargate ] && /etc/init.d/stargate stop >/dev/null 2>&1 || true
   cat > /etc/config/stargate <<'EOF'
 config global 'global'
@@ -1378,7 +1378,7 @@ singbox_upgrade() {
   install_dir="$(dirname "$singbox_bin")"
   backup_dir="/usr/share/stargate/backup"
   backup_bin="$backup_dir/sing-box.bak"
-  tmp_bin="/tmp/stargate-sing-box.new"
+  tmp_bin="$tmp_prefix-sing-box.new"
 
   mkdir -p "$install_dir" "$backup_dir"
   cp -f "$upload" "$tmp_bin"

@@ -26,7 +26,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - 新配置先写到 `.next`，校验通过后再替换正式配置。
 - 替换前备份上一份配置到 `/etc/stargate/config.json.bak`。
 - 启动失败时回滚上一份配置。
-- DNS 只写 sing-box 内部 DNS，不修改 dnsmasq、不改 DHCP 下发 DNS。
+- DNS 优先写 sing-box 内部 DNS；透明代理场景可通过 Stargate 自己的防火墙规则把受管设备 DNS 重定向到 sing-box。
 - LuCI 版后端提供显式 `rollback` 动作，会先用 `sing-box check` 校验备份配置，再恢复到正式配置；如果服务正在运行，会用恢复后的配置重启。
 
 ## 仓库结构
@@ -75,7 +75,9 @@ LuCI 版后端还提供两个显式启动动作：
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
 - `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。
 
-这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。当前透明代理动作只管理 sing-box 透明入站本身，不自动写入防火墙转发规则、dnsmasq 或 DHCP。
+这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
+
+防火墙工具自动选择后端：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
 
 ## 命名边界
 
@@ -93,6 +95,8 @@ LuCI 版后端还提供两个显式启动动作：
 - `final`：默认 `direct-dns`。命中代理规则的域名仍会走 `remote-doh`，未命中的域名使用直连 DNS 兜底。
 
 第一阶段的入站 SOCKS/HTTP 使用 sing-box 的 DNS 解析能力，不接管局域网 DNS。
+
+DNS 重定向默认开启，但只在透明代理防火墙规则应用时实际接管受管设备的 TCP/UDP 53。后端会把 53 端口重定向到 sing-box 的本地 `dns-in` 入站，再通过 `hijack-dns` 动作进入 sing-box DNS 模块。
 
 LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直连 DNS 和远端 DoH 预设会同时确定协议、服务器和 DoH path，避免只改服务器但忘记协议或路径导致 DNS 静默失效；选择 `Custom` 时才显示底层传输、服务器和 path。
 

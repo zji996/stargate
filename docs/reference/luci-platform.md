@@ -6,7 +6,7 @@
 
 当前包含：
 
-- Overview：较大的状态面板、本机出口连通性测试，以及勾选式启用入口。本机代理只启用 SOCKS/HTTP；透明代理必须先勾选本机代理后才能勾选，并额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
+- Overview：较大的状态面板、本机出口连通性测试、勾选式启用入口，以及防火墙工具。本机代理只启用 SOCKS/HTTP；透明代理必须先勾选本机代理后才能勾选，并额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
 - Node：轻量节点列表、手动添加节点、通过 `anytls://` 链接添加节点、行内使用节点、弹窗编辑节点，以及本机 SOCKS/HTTP 入站。
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
 - Rules：基于 Loyalsoldier 基础规则的黑名单/白名单分流，并支持少量用户直连/代理域名覆盖。
@@ -31,7 +31,7 @@ Stargate 同时保留两套 LuCI 页面入口：
 - 现代 LuCI JS view：`htdocs/luci-static/resources/view/stargate/*.js`
 - 旧式 Lua CBI fallback：`luasrc/controller/stargate.lua` 和 `luasrc/model/cbi/stargate/client/*.lua`
 
-原因是不同 OpenWrt 固件的 LuCI 形态差异很大。2026-05-11 在 `192.168.6.1` 的 BleachWrt / OpenWrt 24.10.3 上实测：
+原因是不同 OpenWrt 固件的 LuCI 形态差异很大。2026-05-11 在一台 OpenWrt 24 系列测试路由器上实测：
 
 - 设备有 `/usr/share/luci/menu.d/`，但现有服务菜单主要来自 `/usr/lib/lua/luci/controller/*.lua`。
 - Lua controller 中调用 `view("stargate/overview")` 会报错：
@@ -121,16 +121,16 @@ Stargate 默认使用 `/usr/bin/sing-box`，也就是 OpenWrt 系统已安装的
 
 ## 路由器测试记录
 
-2026-05-10 到 2026-05-11 在 `192.168.6.1` 做过非接管测试和 LuCI 部署测试：
+2026-05-10 到 2026-05-11 在测试路由器上做过非接管测试和 LuCI 部署测试：
 
-- OpenWrt: 24.10.3, `qualcommax/ipq60xx`, `aarch64_cortex-a53`
+- OpenWrt: 24 系列，aarch64 路由器
 - sing-box: `/usr/bin/sing-box`, 1.13.11-r1
 - PassWall2: 已安装，`enabled=0`，配置中的 `sing_box_file=/usr/bin/sing-box`
-- 空闲测试端口：`127.0.0.1:18080` SOCKS, `127.0.0.1:18081` HTTP
-- 隔离 UCI：`UCI_CONFIG_DIR=/tmp/stargate-test/config`
+- 空闲测试端口：临时本机 SOCKS/HTTP 端口
+- 隔离 UCI：临时 UCI 配置目录
 - 生成配置通过 `sing-box check`
-- 短时运行只监听 `127.0.0.1:18080` 和 `127.0.0.1:18081`
-- 测试后已停止进程并清理 `/tmp/stargate-test`
+- 短时运行只监听临时本机端口
+- 测试后已停止进程并清理临时目录
 - LuCI 服务菜单在该固件上需要 Lua controller + CBI 页面，不能只依赖 `menu.d` + JS view。
 
 本次测试发现 sing-box 1.13.11 对缺失 `route.default_domain_resolver` 会报废弃错误，因此生成器已固定写入：
@@ -159,7 +159,7 @@ Overview 的 Baidu / Google / GitHub 测试用于检查路由器本机出口连�
 - `dns.final`：默认 `direct-dns`；命中代理规则的域名仍会由 DNS rule 指向 `remote-doh`。
 - `route.default_domain_resolver`：默认 `direct-dns`，用于解析出站服务器域名，避免依赖 sing-box 1.12 后的废弃行为。
 
-这对应用户希望的“tcp doh 的 dns”：直连侧优先 TCP，代理侧优先 DoH。后续可以继续扩展 DoT、HTTP/3、FakeIP 和 DNS hijack，但第一版不默认接管局域网 DNS。
+这对应用户希望的“tcp doh 的 dns”：直连侧优先 TCP，代理侧优先 DoH。DNS 重定向默认开启，但只有透明代理防火墙规则应用后才会接管受管设备的 TCP/UDP 53；后续可以继续扩展 DoT、HTTP/3 和 FakeIP。
 
 LuCI 页面不再要求用户手工拼协议、服务器和 DoH path。直连 DNS 与远端 DNS 均提供预设下拉，预设会完整写入 sing-box 所需的 type/server/path；选择 `Custom` 时才显示自定义传输、服务器和 path。这个设计吸收 PassWall2 的服务商预设经验，但减少高级选项默认暴露，降低 DNS 配置失效概率。
 
@@ -182,9 +182,9 @@ Rules 页刻意不暴露默认出站和代理出站这类实现细节。用户�
 
 ## 暂不启用的能力
 
-第一版已经提供透明代理入站开关，但仍不执行系统级接管：
+第一版已经提供透明代理入站开关和 Stargate 自己的防火墙工具：
 
-- 不自动写入 firewall4 / nftables 转发规则。
+- 防火墙工具只管理 Stargate 自己的规则，支持应用、状态查看和清理。
 - 不接管 dnsmasq。
 - 不修改 DHCP 下发 DNS。
 
