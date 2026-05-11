@@ -40,12 +40,12 @@ local_path.default = "/dns-query"
 local_path:depends({ local_preset = "custom", local_type = "https" })
 
 remote_preset = s:option(ListValue, "remote_preset", translate("Remote DNS server"))
-remote_preset:value("cloudflare_doh", translate("Cloudflare DoH (recommended)"))
+remote_preset:value("quad9_doh", translate("Quad9 DoH (recommended)"))
+remote_preset:value("cloudflare_doh", translate("Cloudflare DoH"))
 remote_preset:value("cloudflare_security_doh", translate("Cloudflare Security DoH"))
 remote_preset:value("google_doh", translate("Google DoH"))
-remote_preset:value("quad9_doh", translate("Quad9 DoH"))
 remote_preset:value("custom", translate("Custom"))
-remote_preset.default = "cloudflare_doh"
+remote_preset.default = "quad9_doh"
 remote_preset.description = translate("Used for domains matched by proxy rules. Presets avoid protocol and path mismatches that often make DNS fail silently.")
 
 remote_type = s:option(ListValue, "remote_type", translate("Custom remote DNS transport"))
@@ -57,7 +57,7 @@ remote_type.default = "https"
 remote_type:depends("remote_preset", "custom")
 
 remote_server = s:option(Value, "remote_server", translate("Custom remote DNS server"))
-remote_server.default = "1.1.1.1"
+remote_server.default = "9.9.9.9"
 remote_server:depends("remote_preset", "custom")
 
 remote_path = s:option(Value, "remote_path", translate("DoH path"))
