@@ -99,7 +99,18 @@ Node 页参考 PassWall2 的节点列表体验，但第一版范围更窄：
 
 ## 后端结构
 
-`luci-app-stargate/root/usr/share/stargate/stargate.sh` 是 LuCI 版后端入口，负责：
+`luci-app-stargate/root/usr/share/stargate/stargate.sh` 是 LuCI 版后端统一入口，只负责加载模块和分发命令。具体实现拆在 `root/usr/share/stargate/lib/`：
+
+- `common.sh`：UCI 读取、通用校验、DNS 预设和基础解析工具。
+- `nodes.sh`：节点添加、链接解析、编辑、启用和删除。
+- `rules.sh`：规则状态、规则测试和路由匹配辅助。
+- `rules_update.sh`：clash-rules 下载、转换和 rule-set 编译。
+- `config.sh`：sing-box 配置生成、校验、应用和回滚。
+- `service.sh`：服务启停、状态、连通性探测和日志。
+- `firewall.sh`：iptables/nftables 转发规则应用、清理和状态。
+- `maintenance.sh`：备份还原、默认配置恢复和 sing-box 二进制升级/回滚。
+
+LuCI 后端整体负责：
 
 - 从 `/etc/config/stargate` 读取 UCI 配置。
 - 生成 `/etc/stargate/config.json.next`。

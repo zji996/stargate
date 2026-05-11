@@ -34,7 +34,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 当前项目没有多个独立运行单元，不拆 `apps/` 或 `packages/`。
 
 - `scripts/stargate.sh`：当前唯一业务脚本，负责安装服务、解析 AnyTLS URI、生成配置、校验、启动、停止、状态查看和卸载。
-- `luci-app-stargate/`：第一版 OpenWrt LuCI 管理前端包，负责 UCI 配置、页面、服务入口和配置生成后端。
+- `luci-app-stargate/`：第一版 OpenWrt LuCI 管理前端包，负责 UCI 配置、页面、服务入口和配置生成后端。LuCI 后端统一入口是 `root/usr/share/stargate/stargate.sh`，具体实现按 common、nodes、rules、config、firewall、maintenance 拆到 `root/usr/share/stargate/lib/*.sh`。
 - `manage.sh`：本地开发检查入口，只做命令路由。
 - `examples/anytls.json`：结构化节点配置方向示例。
 - `docs/current.md`：当前协作上下文。

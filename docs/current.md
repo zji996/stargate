@@ -25,7 +25,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 ## 当前实现
 
 - `scripts/stargate.sh` 提供 `install`、`configure`、`status`、`start`、`stop`、`restart`、`check`、`uninstall`。
-- `luci-app-stargate/` 提供第一版 OpenWrt LuCI 管理前端包，包括 UCI 配置、procd 服务、LuCI JS 页面、Lua CBI fallback 页面和配置生成后端。
+- `luci-app-stargate/` 提供第一版 OpenWrt LuCI 管理前端包，包括 UCI 配置、procd 服务、LuCI JS 页面、Lua CBI fallback 页面和配置生成后端。LuCI 后端以 `/usr/share/stargate/stargate.sh` 为统一入口，具体能力拆在 `/usr/share/stargate/lib/*.sh`。
 - LuCI 页面源码默认英文，`po/zh-cn/stargate.po` 提供简体中文翻译，跟随 OpenWrt LuCI 语言切换。
 - `configure` 交互式读取 AnyTLS URI，生成 `/etc/stargate/config.json`。
 - `/etc/init.d/stargate` 使用 procd 启动 `/usr/bin/sing-box run -c /etc/stargate/config.json`。
