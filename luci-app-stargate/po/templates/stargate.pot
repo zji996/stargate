@@ -483,6 +483,21 @@ msgstr ""
 msgid "Not updated"
 msgstr ""
 
+msgid "Result"
+msgstr ""
+
+msgid "No result"
+msgstr ""
+
+msgid "Domain or IP"
+msgstr ""
+
+msgid "Domain or IP is required."
+msgstr ""
+
+msgid "Test policy"
+msgstr ""
+
 msgid "Rules updated successfully."
 msgstr ""
 

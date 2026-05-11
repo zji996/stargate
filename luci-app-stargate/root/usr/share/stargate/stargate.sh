@@ -33,6 +33,7 @@ Usage:
   /usr/share/stargate/stargate.sh rules-update
   /usr/share/stargate/stargate.sh rules-update-start
   /usr/share/stargate/stargate.sh rules-status
+  /usr/share/stargate/stargate.sh rules-test domain-or-ip
   /usr/share/stargate/stargate.sh backup-create [output.tar.gz]
   /usr/share/stargate/stargate.sh backup-restore input.tar.gz
   /usr/share/stargate/stargate.sh reset-defaults
@@ -491,6 +492,228 @@ rules_status() {
   [ -z "$update_last" ] || printf 'Last update: %s\n' "$update_last"
   printf 'Direct list: %s\n' "$direct_count"
   printf 'Proxy list: %s\n' "$proxy_count"
+}
+
+normalize_rule_target() {
+  printf '%s' "${1:-}" | awk '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    {
+      v = trim($0)
+      sub(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, "", v)
+      sub(/^[^@/]+@/, "", v)
+      sub(/[/?#].*$/, "", v)
+      if (v ~ /^\[[^]]+\](:[0-9]+)?$/) {
+        sub(/^\[/, "", v)
+        sub(/\](:[0-9]+)?$/, "", v)
+      } else if (v !~ /:.*:/) {
+        sub(/:[0-9]+$/, "", v)
+      }
+      sub(/\.$/, "", v)
+      print tolower(trim(v))
+      exit
+    }
+  '
+}
+
+is_ipv4() {
+  printf '%s\n' "$1" | awk -F. '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) exit 1
+      }
+      exit 0
+    }
+  '
+}
+
+is_ip_address() {
+  is_ipv4 "$1" || { printf '%s' "$1" | grep -q ':' && printf '%s' "$1" | grep -Eq '^[0-9a-f:]+$'; }
+}
+
+is_private_address() {
+  target="$1"
+  if is_ipv4 "$target"; then
+    printf '%s\n' "$target" | awk -F. '
+      $1 == 0 || $1 == 10 || $1 == 127 { exit 0 }
+      $1 == 100 && $2 >= 64 && $2 <= 127 { exit 0 }
+      $1 == 169 && $2 == 254 { exit 0 }
+      $1 == 172 && $2 >= 16 && $2 <= 31 { exit 0 }
+      $1 == 192 && $2 == 168 { exit 0 }
+      $1 >= 224 { exit 0 }
+      { exit 1 }
+    '
+    return "$?"
+  fi
+  case "$target" in
+    ::1|fc*:*|fd*:*|fe80:*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+custom_domain_match() {
+  list="$1"
+  target="$2"
+  printf '%s\n' "$list" | awk -v target="$target" '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function suffix_match(domain, suffix) {
+      return domain == suffix || (length(domain) > length(suffix) && substr(domain, length(domain) - length(suffix), 1) == "." && substr(domain, length(domain) - length(suffix) + 1) == suffix)
+    }
+    {
+      line = tolower(trim($0))
+      if (line == "" || line ~ /^#/) next
+      sub(/^full:/, "", line)
+      sub(/^domain:/, "", line)
+      sub(/^\+\./, "", line)
+      if (line !~ /^[a-z0-9_.-]+$/) next
+      if (suffix_match(target, line)) {
+        print line
+        found = 1
+        exit
+      }
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
+rule_set_match() {
+  file="$1"
+  target="$2"
+  [ -f "$file" ] || return 1
+  sed 's/"domain"/\
+"domain"/g; s/"domain_suffix"/\
+"domain_suffix"/g; s/"domain_keyword"/\
+"domain_keyword"/g' "$file" | awk -v target="$target" '
+    function suffix_match(domain, suffix) {
+      return domain == suffix || (length(domain) > length(suffix) && substr(domain, length(domain) - length(suffix), 1) == "." && substr(domain, length(domain) - length(suffix) + 1) == suffix)
+    }
+    function emit(kind, value) {
+      printf "%s:%s\n", kind, value
+      found = 1
+      exit
+    }
+    function check_value(value) {
+      value = tolower(value)
+      if (section == "domain" && target == value) emit("domain", value)
+      if (section == "domain_suffix" && suffix_match(target, value)) emit("domain_suffix", value)
+      if (section == "domain_keyword" && index(target, value) > 0) emit("domain_keyword", value)
+    }
+    {
+      line = $0
+      if (line ~ /"domain": *\[/) {
+        section = "domain"
+        sub(/^.*"domain": *\[/, "", line)
+      } else if (line ~ /"domain_suffix": *\[/) {
+        section = "domain_suffix"
+        sub(/^.*"domain_suffix": *\[/, "", line)
+      } else if (line ~ /"domain_keyword": *\[/) {
+        section = "domain_keyword"
+        sub(/^.*"domain_keyword": *\[/, "", line)
+      }
+      while (section != "" && match(line, /"([^"\\]|\\.)*"/)) {
+        value = substr(line, RSTART + 1, RLENGTH - 2)
+        gsub(/\\"/, "\"", value)
+        check_value(value)
+        line = substr(line, RSTART + RLENGTH)
+      }
+      if (line ~ /\]/) section = ""
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
+rules_test() {
+  load_config
+  target="$(normalize_rule_target "${1:-}")"
+  [ -n "$target" ] || {
+    echo "Target is required" >&2
+    exit 1
+  }
+  printf 'Target: %s\n' "$target"
+
+  if is_ip_address "$target"; then
+    if [ "$rules_private_direct" = "1" ] && is_private_address "$target"; then
+      printf 'Decision: Direct\n'
+      printf 'Outbound: direct\n'
+      printf 'Reason: private IP direct\n'
+      return 0
+    fi
+    case "$rules_mode" in
+      global_proxy)
+        printf 'Decision: Proxy\n'
+        printf 'Outbound: anytls-out\n'
+        printf 'Reason: global proxy mode\n'
+        ;;
+      whitelist)
+        printf 'Decision: Proxy\n'
+        printf 'Outbound: anytls-out\n'
+        printf 'Reason: whitelist default\n'
+        ;;
+      direct|blacklist|*)
+        printf 'Decision: Direct\n'
+        printf 'Outbound: direct\n'
+        printf 'Reason: IP address default\n'
+        ;;
+    esac
+    return 0
+  fi
+
+  case "$target" in *[!a-z0-9_.-]*|.*|*..*|*.) echo "Invalid domain or IP: $target" >&2; exit 1 ;; esac
+
+  if [ "$rules_mode" = "global_proxy" ]; then
+    printf 'Decision: Proxy\n'
+    printf 'Outbound: anytls-out\n'
+    printf 'Reason: global proxy mode\n'
+    return 0
+  fi
+  if [ "$rules_mode" = "direct" ]; then
+    printf 'Decision: Direct\n'
+    printf 'Outbound: direct\n'
+    printf 'Reason: direct only mode\n'
+    return 0
+  fi
+
+  match="$(custom_domain_match "$rules_custom_direct_domains" "$target" 2>/dev/null || true)"
+  if [ -n "$match" ]; then
+    printf 'Decision: Direct\n'
+    printf 'Outbound: direct\n'
+    printf 'Reason: user direct domain (%s)\n' "$match"
+    return 0
+  fi
+
+  match="$(custom_domain_match "$rules_custom_proxy_domains" "$target" 2>/dev/null || true)"
+  if [ -n "$match" ]; then
+    printf 'Decision: Proxy\n'
+    printf 'Outbound: anytls-out\n'
+    printf 'Reason: user proxy domain (%s)\n' "$match"
+    return 0
+  fi
+
+  match="$(rule_set_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+  if [ -n "$match" ]; then
+    printf 'Decision: Direct\n'
+    printf 'Outbound: direct\n'
+    printf 'Reason: direct rule-set (%s)\n' "$match"
+    return 0
+  fi
+
+  match="$(rule_set_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
+  if [ -n "$match" ]; then
+    printf 'Decision: Proxy\n'
+    printf 'Outbound: anytls-out\n'
+    printf 'Reason: proxy rule-set (%s)\n' "$match"
+    return 0
+  fi
+
+  if [ "$rules_mode" = "whitelist" ]; then
+    printf 'Decision: Proxy\n'
+    printf 'Outbound: anytls-out\n'
+    printf 'Reason: whitelist default\n'
+  else
+    printf 'Decision: Direct\n'
+    printf 'Outbound: direct\n'
+    printf 'Reason: blacklist default\n'
+  fi
 }
 
 json_array_from_list() {
@@ -1435,6 +1658,7 @@ case "$action" in
   rules-update) rules_update ;;
   rules-update-start) rules_update_start ;;
   rules-status) rules_status ;;
+  rules-test) rules_test "${2:-}" ;;
   backup-create) backup_create "${2:-}" ;;
   backup-restore) backup_restore "${2:-}" ;;
   reset-defaults) reset_defaults ;;

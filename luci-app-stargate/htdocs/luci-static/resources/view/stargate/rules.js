@@ -14,6 +14,19 @@ function parseStatus(text) {
   return rows;
 }
 
+function ruleResultView(text, fallback) {
+  var rows = parseStatus(text);
+  return E('div', { 'class': 'stargate-rule-test-result' }, rows.length ? rows.map(function(row) {
+    return E('div', { 'class': 'stargate-rule-status-row' }, [
+      E('span', {}, row[0]),
+      E('strong', {}, row[1])
+    ]);
+  }) : E('div', { 'class': 'stargate-rule-status-row' }, [
+    E('span', {}, _('Result')),
+    E('strong', {}, fallback || _('No result'))
+  ]));
+}
+
 return view.extend({
   load: function() {
     return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'rules-status' ]).catch(function() {
@@ -98,7 +111,10 @@ return view.extend({
           '.stargate-rule-status-row{display:flex;justify-content:space-between;gap:16px;font-size:13px;line-height:1.45}',
           '.stargate-rule-status-row span{opacity:.72}',
           '.stargate-rule-status-row strong{font-weight:600;text-align:right}',
-          '.stargate-rule-ok{padding:8px 10px;border-radius:6px;background:rgba(46,160,67,.16);color:#9fd49f}'
+          '.stargate-rule-ok{padding:8px 10px;border-radius:6px;background:rgba(46,160,67,.16);color:#9fd49f}',
+          '.stargate-rule-test{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:center}',
+          '.stargate-rule-test-result{grid-column:1/-1;display:grid;gap:8px;padding:12px;border:1px solid rgba(127,127,127,.18);border-radius:6px}',
+          '@media(max-width:720px){.stargate-rule-test{grid-template-columns:1fr}}'
         ].join('')),
         E('div', { 'class': 'stargate-rule-action-row' }, [
           E('button', {
@@ -125,12 +141,36 @@ return view.extend({
             })
           }, [ _('Refresh status') ])
         ]),
-        statusView(status)
+        statusView(status),
+        E('div', { 'class': 'stargate-rule-test' }, [
+          E('input', {
+            'type': 'text',
+            'class': 'cbi-input-text',
+            'placeholder': _('Domain or IP')
+          }),
+          E('button', {
+            'class': 'btn cbi-button',
+            'click': ui.createHandlerFn(this, function(ev) {
+              var container = ev.currentTarget.closest('.stargate-rule-test');
+              var input = container.querySelector('input');
+              var old = container.querySelector('.stargate-rule-test-result');
+              var target = (input.value || '').trim();
+              if (!target) {
+                ui.addNotification(null, E('p', {}, _('Domain or IP is required.')), 'warning');
+                return;
+              }
+              return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'rules-test', target ])
+                .then(function(text) {
+                  if (old)
+                    old.parentNode.removeChild(old);
+                  container.appendChild(ruleResultView(text));
+                })
+                .catch(function(err) { ui.addNotification(null, E('pre', {}, err.message), 'danger'); });
+            })
+          }, [ _('Test policy') ])
+        ])
       ]);
     };
-    actions.depends('mode', 'blacklist');
-    actions.depends('mode', 'whitelist');
-
     var privateDirect = s.option(form.Flag, 'private_direct', _('Private IP direct'));
     privateDirect.default = '1';
     privateDirect.rmempty = false;

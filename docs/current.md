@@ -46,6 +46,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Quad9 DoH，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。DNS 重定向默认开启，透明代理防火墙规则应用后会把受管设备的 53 端口导入 sing-box DNS。
 - Overview 增加防火墙工具，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用和清理；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
 - Rules 页改为 Loyalsoldier 基础规则体系，不再内置离线 fallback。用户需要显式更新规则，后端将 `direct-list.txt` 和 `proxy-list.txt` 转换为 sing-box `source` rule-set；页面只暴露黑名单/白名单模式和用户直连/代理域名，默认出站与代理出站由模式自动决定。
+- Rules 页提供测试策略入口，可输入域名或 IP，按当前模式、用户规则、基础规则集和默认出站判断最终走 Proxy 还是 Direct，并显示命中原因。
 
 ## 当前边界
 

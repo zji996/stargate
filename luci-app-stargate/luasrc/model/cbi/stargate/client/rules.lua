@@ -15,6 +15,17 @@ local function ui_text(en, zh)
   return en
 end
 
+local function parse_status_rows(output)
+  local rows = {}
+  for line in (output or ""):gmatch("[^\r\n]+") do
+    local key, value = line:match("^([^:]+):%s*(.*)$")
+    if key and value then
+      rows[#rows + 1] = { key, value }
+    end
+  end
+  return rows
+end
+
 local function rule_status_html(message)
   local status = trim(sys.exec("/usr/share/stargate/stargate.sh rules-status 2>/dev/null"))
   local parts = {}
@@ -33,16 +44,32 @@ local function rule_status_html(message)
   return table.concat(parts, "\n")
 end
 
+local function rule_test_html(output)
+  local rows = parse_status_rows(output)
+  local parts = {}
+  if #rows == 0 then
+    return ""
+  end
+  for _, row in ipairs(rows) do
+    parts[#parts + 1] = '<div class="stargate-rule-status-row"><span>' .. util.pcdata(row[1]) .. '</span><strong>' .. util.pcdata(row[2]) .. '</strong></div>'
+  end
+  return '<div class="stargate-rule-test-result">' .. table.concat(parts, "\n") .. '</div>'
+end
+
 m = Map("stargate", translate("Rules"))
 m.description = ui_text("Use Loyalsoldier as the base rule source. Pick a blacklist or whitelist routing mode, then add only the few domains you want to override.", "以 Loyalsoldier 作为基础规则源。选择黑名单或白名单模式，只额外填写少量需要覆盖的域名。")
 
 local message = nil
+local test_output = nil
+local test_target = trim(http.formvalue("stargate_rules_target") or "")
 local action = http.formvalue("stargate_rules_action")
 if action == "update" then
   sys.exec("/usr/share/stargate/stargate.sh rules-update-start >/dev/null 2>&1")
   message = ui_text("Rule update started. Refresh status in a moment.", "规则更新已开始，稍后刷新状态查看结果。")
 elseif action == "status" then
   message = ui_text("Rule status refreshed.", "规则状态已刷新。")
+elseif action == "test" and test_target ~= "" then
+  test_output = sys.exec("/usr/share/stargate/stargate.sh rules-test " .. util.shellquote(test_target) .. " 2>&1")
 end
 
 s = m:section(NamedSection, "rules", "rules", translate("Rule policy"))
@@ -104,6 +131,9 @@ function actions.cfgvalue()
     '.stargate-rule-status-row span{opacity:.72}',
     '.stargate-rule-status-row strong{font-weight:600;text-align:right}',
     '.stargate-rule-ok{padding:8px 10px;border-radius:6px;background:rgba(46,160,67,.16);color:#9fd49f}',
+    '.stargate-rule-test{display:grid;grid-template-columns:minmax(220px,1fr) auto;gap:10px;align-items:center}',
+    '.stargate-rule-test-result{grid-column:1/-1;display:grid;gap:8px;padding:12px;border:1px solid rgba(127,127,127,.18);border-radius:6px}',
+    '@media(max-width:720px){.stargate-rule-test{grid-template-columns:1fr}}',
     '</style>',
     '<div class="stargate-rule-actions">',
     '<div class="stargate-rule-action-row">',
@@ -111,12 +141,14 @@ function actions.cfgvalue()
     '<input class="cbi-button" type="button" value="' .. ui_text("Refresh status", "刷新状态") .. '" onclick="location.href=\'' .. base .. '?stargate_rules_action=status\'" />',
     '</div>',
     '<div class="stargate-rule-status">' .. rule_status_html(message) .. '</div>',
+    '<div class="stargate-rule-test">',
+    '<input id="stargate-rules-target" class="cbi-input-text" type="text" value="' .. util.pcdata(test_target) .. '" placeholder="' .. ui_text("Domain or IP", "域名或 IP") .. '" />',
+    '<input class="cbi-button" type="button" value="' .. ui_text("Test policy", "测试策略") .. '" onclick="var v=document.getElementById(\'stargate-rules-target\').value; if(v){location.href=\'' .. base .. '?stargate_rules_action=test&amp;stargate_rules_target=\'+encodeURIComponent(v)}" />',
+    rule_test_html(test_output),
+    '</div>',
     '</div>'
   }, "\n")
 end
-actions:depends("mode", "blacklist")
-actions:depends("mode", "whitelist")
-
 private_direct = s:option(Flag, "private_direct", translate("Private IP direct"))
 private_direct.default = "1"
 private_direct.rmempty = false

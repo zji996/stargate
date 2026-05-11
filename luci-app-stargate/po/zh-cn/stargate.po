@@ -484,6 +484,21 @@ msgstr "规则文件"
 msgid "Not updated"
 msgstr "未更新"
 
+msgid "Result"
+msgstr "结果"
+
+msgid "No result"
+msgstr "无结果"
+
+msgid "Domain or IP"
+msgstr "域名或 IP"
+
+msgid "Domain or IP is required."
+msgstr "请输入域名或 IP。"
+
+msgid "Test policy"
+msgstr "测试策略"
+
 msgid "Rules updated successfully."
 msgstr "规则已更新成功。"
 
