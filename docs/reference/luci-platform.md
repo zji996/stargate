@@ -6,10 +6,11 @@
 
 当前包含：
 
-- Overview：较大的状态面板、本机出口连通性测试、勾选式启用入口，以及防火墙工具。本机代理只启用 SOCKS/HTTP；透明代理必须先勾选本机代理后才能勾选，并额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
+- Overview：较大的状态面板、本机出口连通性测试和勾选式启用入口。本机代理只启用 SOCKS/HTTP；透明代理必须先勾选本机代理后才能勾选，并额外启用 sing-box `redirect` 或 `tproxy` 入站，默认 `redirect`。
 - Node：轻量节点列表、手动添加节点、通过 `anytls://` 链接添加节点、行内使用节点、弹窗编辑节点，以及本机 SOCKS/HTTP 入站。
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
 - Rules：基于 Loyalsoldier 基础规则的黑名单/白名单分流，并支持少量用户直连/代理域名覆盖。
+- Advanced：透明代理转发配置，集中放置会写 nftables/iptables 的应用和清理动作。
 - Maintenance：分为 `sing-box 设置` 和 `备份还原` 两块；前者保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 体验提供备份还原、恢复默认配置和生成配置回滚。
 - Logs：最近的 Stargate 和 sing-box 日志。
 
@@ -182,9 +183,9 @@ Rules 页刻意不暴露默认出站和代理出站这类实现细节。用户�
 
 ## 暂不启用的能力
 
-第一版已经提供透明代理入站开关和 Stargate 自己的防火墙工具：
+第一版已经提供透明代理入站开关和 Stargate 自己的转发配置：
 
-- 防火墙工具只管理 Stargate 自己的规则，支持应用、状态查看和清理。
+- Advanced 页的转发配置只管理 Stargate 自己的规则，支持应用、状态查看和清理。
 - 不接管 dnsmasq。
 - 不修改 DHCP 下发 DNS。
 

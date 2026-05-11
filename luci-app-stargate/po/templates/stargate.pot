@@ -24,6 +24,9 @@ msgstr ""
 msgid "Rules"
 msgstr ""
 
+msgid "Advanced"
+msgstr ""
+
 msgid "Logs"
 msgstr ""
 
@@ -564,16 +567,28 @@ msgstr ""
 msgid "Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself."
 msgstr ""
 
-msgid "Optional transparent inbound. Enable local proxy first, then use the firewall tool to route managed devices through it."
+msgid "Optional transparent inbound. Enable local proxy first, then configure forwarding on the Advanced page."
 msgstr ""
 
-msgid "Firewall tool"
+msgid "Forwarding and system integration settings for transparent proxy."
 msgstr ""
 
-msgid "Apply rules"
+msgid "Forwarding"
 msgstr ""
 
-msgid "Clean rules"
+msgid "Forwarding rules"
+msgstr ""
+
+msgid "No firewall backend status."
+msgstr ""
+
+msgid "Applies or removes only Stargate-owned transparent proxy forwarding rules. Backend is selected automatically: nftables first, iptables fallback."
+msgstr ""
+
+msgid "Apply transparent forwarding"
+msgstr ""
+
+msgid "Clean Stargate forwarding"
 msgstr ""
 
 msgid "Enable local proxy first."

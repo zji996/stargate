@@ -25,6 +25,9 @@ msgstr "DNS"
 msgid "Rules"
 msgstr "规则"
 
+msgid "Advanced"
+msgstr "高级"
+
 msgid "Logs"
 msgstr "日志"
 
@@ -565,17 +568,29 @@ msgstr "启用 Stargate 本机 SOCKS/HTTP 入站。勾选后使用右下角“�
 msgid "Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself."
 msgstr "可选透明入站。需要先勾选本机代理；Stargate 仍不会自动写入防火墙或 DNS 接管规则。"
 
-msgid "Optional transparent inbound. Enable local proxy first, then use the firewall tool to route managed devices through it."
-msgstr "可选透明入站。需要先勾选本机代理；之后用防火墙工具让受管设备走透明代理。"
+msgid "Optional transparent inbound. Enable local proxy first, then configure forwarding on the Advanced page."
+msgstr "可选透明入站。需要先勾选本机代理；之后到高级页配置转发。"
 
-msgid "Firewall tool"
-msgstr "防火墙工具"
+msgid "Forwarding and system integration settings for transparent proxy."
+msgstr "透明代理的转发和系统集成设置。"
 
-msgid "Apply rules"
-msgstr "应用规则"
+msgid "Forwarding"
+msgstr "转发配置"
 
-msgid "Clean rules"
-msgstr "清理规则"
+msgid "Forwarding rules"
+msgstr "转发规则"
+
+msgid "No firewall backend status."
+msgstr "没有防火墙后端状态。"
+
+msgid "Applies or removes only Stargate-owned transparent proxy forwarding rules. Backend is selected automatically: nftables first, iptables fallback."
+msgstr "只应用或清理 Stargate 自己的透明代理转发规则。后端自动选择：优先 nftables，缺失时回退 iptables。"
+
+msgid "Apply transparent forwarding"
+msgstr "应用透明代理转发"
+
+msgid "Clean Stargate forwarding"
+msgstr "清理 Stargate 转发"
 
 msgid "Enable local proxy first."
 msgstr "请先勾选本机代理。"
