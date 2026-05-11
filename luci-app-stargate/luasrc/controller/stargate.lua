@@ -95,25 +95,46 @@ function connect_status()
     code = 0,
     use_time = 0,
     ping_type = "curl",
+    mode = "unknown",
+    mode_label = "Unknown",
     message = "unknown target"
   }
 
   if probe then
     local transparent = uci_get("stargate", "inbound", "transparent_proxy", "0") == "1"
     local service_state = trim(sys.exec("/etc/init.d/stargate status 2>/dev/null"))
-    local proxy_mode = "direct"
+    local firewall_status = sys.exec("/usr/share/stargate/stargate.sh firewall-status 2>/dev/null")
+    local firewall_active = firewall_status:match("Active:%s*yes") ~= nil
+    local proxy_mode = "local"
     local proxy_arg = ""
-    local proxy_label = "Direct local outlet"
+    local proxy_label = "Stargate local proxy path"
 
-    if transparent and service_state == "running" then
-      local http_listen = uci_get("stargate", "inbound", "http_listen", "127.0.0.1")
-      local http_port = uci_get("stargate", "inbound", "http_port", "10809")
-      if http_listen == "0.0.0.0" or http_listen == "::" or http_listen == "" then
-        http_listen = "127.0.0.1"
-      end
+    result.name = probe.name
+    result.url = probe.url
+    result.service = service_state
+    result.firewall_active = firewall_active
+
+    if service_state ~= "running" then
+      result.mode = "stopped"
+      result.mode_label = "Stargate is not running"
+      result.message = "stargate service is not running"
+      http.prepare_content("application/json")
+      http.write(jsonc.stringify(result))
+      return
+    end
+
+    local http_listen = uci_get("stargate", "inbound", "http_listen", "127.0.0.1")
+    local http_port = uci_get("stargate", "inbound", "http_port", "10809")
+    if http_listen == "0.0.0.0" or http_listen == "::" or http_listen == "" then
+      http_listen = "127.0.0.1"
+    end
+    proxy_arg = "--proxy " .. shellquote("http://" .. http_listen .. ":" .. http_port)
+
+    if transparent and firewall_active then
       proxy_mode = "transparent"
-      proxy_arg = "--proxy " .. shellquote("http://" .. http_listen .. ":" .. http_port)
       proxy_label = "Stargate transparent path"
+    elseif transparent then
+      proxy_label = "Stargate local proxy path (forwarding inactive)"
     end
 
     local route_target = sys.exec("resolveip -4 " .. shellquote(probe.host) .. " 2>/dev/null | head -1")
@@ -135,8 +156,6 @@ function connect_status()
     local code = tonumber(output:match("code=(%d+)")) or 0
     local total = output:match("total=([%d%.]+)") or "0"
 
-    result.name = probe.name
-    result.url = probe.url
     result.mode = proxy_mode
     result.mode_label = proxy_label
     result.proxy = proxy_arg ~= ""

@@ -1280,33 +1280,36 @@ probe_url() {
     exit 1
   fi
 
-  mode="direct local outlet"
-  if [ "$transparent_proxy" = "1" ] && /etc/init.d/stargate status >/dev/null 2>&1; then
-    proxy_host="$http_listen"
-    case "$proxy_host" in
-      ''|0.0.0.0|::) proxy_host="127.0.0.1" ;;
-    esac
-    mode="Stargate transparent path"
-    result="$(curl -L -sS -o /dev/null \
-      --proxy "http://$proxy_host:$http_port" \
-      --connect-timeout 5 \
-      --max-time 10 \
-      -w '%{http_code} %{time_total}' \
-      "$url" 2>&1)" || {
-        echo "$name $mode failed: $result"
-        exit 1
-      }
-  else
-    result="$(curl -L -sS -o /dev/null \
-      --noproxy '*' \
-      --connect-timeout 5 \
-      --max-time 10 \
-      -w '%{http_code} %{time_total}' \
-      "$url" 2>&1)" || {
-        echo "$name $mode failed: $result"
-        exit 1
-      }
+  if ! /etc/init.d/stargate status >/dev/null 2>&1; then
+    echo "$name Stargate is not running"
+    exit 1
   fi
+
+  firewall_active=0
+  if firewall_status_text 2>/dev/null | grep -q '^Active: yes$'; then
+    firewall_active=1
+  fi
+
+  mode="Stargate local proxy path"
+  proxy_host="$http_listen"
+  case "$proxy_host" in
+    ''|0.0.0.0|::) proxy_host="127.0.0.1" ;;
+  esac
+  if [ "$transparent_proxy" = "1" ] && [ "$firewall_active" = "1" ]; then
+    mode="Stargate transparent path"
+  elif [ "$transparent_proxy" = "1" ]; then
+    mode="Stargate local proxy path (forwarding inactive)"
+  fi
+
+  result="$(curl -L -sS -o /dev/null \
+    --proxy "http://$proxy_host:$http_port" \
+    --connect-timeout 5 \
+    --max-time 10 \
+    -w '%{http_code} %{time_total}' \
+    "$url" 2>&1)" || {
+      echo "$name $mode failed: $result"
+      exit 1
+    }
 
   code="${result%% *}"
   total="${result##* }"
