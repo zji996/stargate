@@ -48,6 +48,8 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
 - Rules 页改为 Loyalsoldier 基础规则体系，不再内置离线 fallback。用户需要显式更新规则，后端将 `direct-list.txt` 和 `proxy-list.txt` 转换为 sing-box `source` rule-set；页面只暴露黑名单/白名单模式和用户直连/代理域名，默认出站与代理出站由模式自动决定。
 - Rules 页提供测试策略入口，可输入域名或 IP，按当前模式、用户规则、基础规则集和默认出站判断最终走 Proxy 还是 Direct，并显示命中原因。
+- Rules 页支持用户直连/代理 IP 或 CIDR。透明代理转发已应用时，用户直连 IP/CIDR 会在 Stargate 防火墙链中先返回，避免明确直连的目标进入 sing-box 后产生直连超时噪声；用户代理 IP/CIDR 仍写入 sing-box 路由用于直接按 IP 连接、但需要走节点的服务。
+- 阻断 QUIC 现在在防火墙转发层拒绝受管 LAN 设备的 `UDP/443`，使浏览器或应用回退到 TCP/TLS。该选项只处理 `UDP/443`，不会影响其他 UDP 端口或把普通直连 IP 改成代理。
 
 ## 当前边界
 
