@@ -121,6 +121,20 @@ custom_proxy_domains.description = ui_text("One domain per line. These domains a
 custom_proxy_domains:depends("mode", "blacklist")
 custom_proxy_domains:depends("mode", "whitelist")
 
+custom_direct_ips = s:option(TextValue, "custom_direct_ips", translate("User direct IP/CIDR"))
+custom_direct_ips.rows = 4
+custom_direct_ips.wrap = "off"
+custom_direct_ips.description = ui_text("One IPv4 or CIDR per line. These IP ranges always go direct.", "每行一个 IPv4 或 CIDR。这些 IP 段始终直连。")
+custom_direct_ips:depends("mode", "blacklist")
+custom_direct_ips:depends("mode", "whitelist")
+
+custom_proxy_ips = s:option(TextValue, "custom_proxy_ips", translate("User proxy IP/CIDR"))
+custom_proxy_ips.rows = 4
+custom_proxy_ips.wrap = "off"
+custom_proxy_ips.description = ui_text("One IPv4 or CIDR per line. Use this for services that connect by IP and should not go direct.", "每行一个 IPv4 或 CIDR。适合直接连接 IP、但不应直连的服务。")
+custom_proxy_ips:depends("mode", "blacklist")
+custom_proxy_ips:depends("mode", "whitelist")
+
 actions = s:option(DummyValue, "_rules_actions", translate("Rule actions"))
 actions.rawhtml = true
 function actions.cfgvalue()
@@ -167,6 +181,6 @@ private_direct.rmempty = false
 block_quic = s:option(Flag, "block_quic", translate("Block QUIC"))
 block_quic.default = "0"
 block_quic.rmempty = false
-block_quic.description = ui_text("Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC.", "拒绝 UDP/443，让浏览器和应用从 HTTP/3/QUIC 回退到 TCP/TLS。这样代理分流更可预测，但可能降低依赖 QUIC 的服务速度。")
+block_quic.description = ui_text("Reject LAN UDP/443 at the firewall so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. Re-apply forwarding after changing this option.", "在防火墙层拒绝局域网 UDP/443，让浏览器和应用从 HTTP/3/QUIC 回退到 TCP/TLS。修改后需要重新应用转发。")
 
 return m

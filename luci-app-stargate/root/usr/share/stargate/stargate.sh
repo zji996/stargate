@@ -142,6 +142,8 @@ load_config() {
   rules_proxy_rule_set="$(uci_get rules proxy_rule_set /usr/share/stargate/rules/proxy.json)"
   rules_custom_direct_domains="$(uci_get rules custom_direct_domains '')"
   rules_custom_proxy_domains="$(uci_get rules custom_proxy_domains '')"
+  rules_custom_direct_ips="$(uci_get rules custom_direct_ips '')"
+  rules_custom_proxy_ips="$(uci_get rules custom_proxy_ips '')"
   rules_private_direct="$(uci_get rules private_direct 1)"
   rules_block_quic="$(uci_get rules block_quic 0)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
@@ -560,6 +562,57 @@ is_private_address() {
   esac
 }
 
+ipv4_to_int() {
+  printf '%s\n' "$1" | awk -F. '
+    NF != 4 { exit 1 }
+    {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) exit 1
+      }
+      printf "%.0f\n", ($1 * 16777216) + ($2 * 65536) + ($3 * 256) + $4
+    }
+  '
+}
+
+custom_ip_match() {
+  list="$1"
+  target="$2"
+  is_ipv4 "$target" || return 1
+  target_int="$(ipv4_to_int "$target" 2>/dev/null)" || return 1
+  printf '%s\n' "$list" | tr ', \t' '\n\n\n' | awk -v target="$target" -v target_int="$target_int" '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function ipint(ip, parts, i, n) {
+      n = split(ip, parts, ".")
+      if (n != 4) return -1
+      for (i = 1; i <= 4; i++) {
+        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return -1
+      }
+      return (parts[1] * 16777216) + (parts[2] * 65536) + (parts[3] * 256) + parts[4]
+    }
+    function pow2(n, r) { r = 1; while (n-- > 0) r *= 2; return r }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      sub(/^ip-cidr:/, "", line)
+      split(line, cidr, "/")
+      base = cidr[1]
+      prefix = cidr[2]
+      if (prefix == "") prefix = 32
+      if (prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
+      base_int = ipint(base)
+      if (base_int < 0) next
+      size = pow2(32 - prefix)
+      network = int(base_int / size) * size
+      if (target_int >= network && target_int < network + size) {
+        print line
+        found = 1
+        exit
+      }
+    }
+    END { exit found ? 0 : 1 }
+  '
+}
+
 custom_domain_match() {
   list="$1"
   target="$2"
@@ -582,6 +635,67 @@ custom_domain_match() {
       }
     }
     END { exit found ? 0 : 1 }
+  '
+}
+
+write_inline_ip_rule() {
+  list="$1"
+  outbound="$2"
+  cidrs="$(printf '%s\n' "$list" | tr ', \t' '\n\n\n' | awk '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function valid_ip(ip, parts, i, n) {
+      n = split(ip, parts, ".")
+      if (n != 4) return 0
+      for (i = 1; i <= 4; i++) {
+        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return 0
+      }
+      return 1
+    }
+    function emit(v) {
+      if (seen[v]) return
+      seen[v] = 1
+      if (count++) printf ", "
+      printf "\"%s\"", v
+    }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      sub(/^ip-cidr:/, "", line)
+      split(line, cidr, "/")
+      ip = cidr[1]
+      prefix = cidr[2]
+      if (prefix == "") prefix = 32
+      if (!valid_ip(ip) || prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
+      emit(ip "/" prefix)
+    }
+  ')"
+  [ -n "$cidrs" ] || return 0
+  printf '{ "ip_cidr": [%s], "outbound": "%s" }' "$cidrs" "$outbound"
+}
+
+list_valid_ip_cidrs() {
+  printf '%s\n' "$1" | tr ', \t' '\n\n\n' | awk '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function valid_ip(ip, parts, i, n) {
+      n = split(ip, parts, ".")
+      if (n != 4) return 0
+      for (i = 1; i <= 4; i++) {
+        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return 0
+      }
+      return 1
+    }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      sub(/^ip-cidr:/, "", line)
+      split(line, cidr, "/")
+      ip = cidr[1]
+      prefix = cidr[2]
+      if (prefix == "") prefix = 32
+      if (!valid_ip(ip) || prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
+      value = ip "/" prefix
+      if (!seen[value]++) print value
+    }
   '
 }
 
@@ -617,6 +731,20 @@ rules_test() {
       printf 'Decision: Direct\n'
       printf 'Outbound: direct\n'
       printf 'Reason: private IP direct\n'
+      return 0
+    fi
+    match="$(custom_ip_match "$rules_custom_direct_ips" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Direct\n'
+      printf 'Outbound: direct\n'
+      printf 'Reason: user direct IP (%s)\n' "$match"
+      return 0
+    fi
+    match="$(custom_ip_match "$rules_custom_proxy_ips" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Proxy\n'
+      printf 'Outbound: anytls-out\n'
+      printf 'Reason: user proxy IP (%s)\n' "$match"
       return 0
     fi
     case "$rules_mode" in
@@ -958,6 +1086,10 @@ write_route_rules() {
   if [ "$rules_private_direct" = "1" ]; then
     add_rule '{ "ip_is_private": true, "outbound": "direct" }'
   fi
+  custom_direct_ip_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" "direct")"
+  custom_proxy_ip_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" "anytls-out")"
+  [ -z "$custom_direct_ip_rule" ] || add_rule "$custom_direct_ip_rule"
+  [ -z "$custom_proxy_ip_rule" ] || add_rule "$custom_proxy_ip_rule"
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     custom_direct_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" "direct")"
     custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "anytls-out")"
@@ -1333,8 +1465,17 @@ logs_raw() {
 }
 
 logs_clear() {
-  logread -c
-  echo "logs cleared"
+  if ubus call log clear >/dev/null 2>&1; then
+    echo "logs cleared"
+    return 0
+  fi
+  if [ -x /etc/init.d/log ]; then
+    /etc/init.d/log restart >/dev/null 2>&1 || true
+    echo "log service restarted"
+    return 0
+  fi
+  echo "log clear is not supported on this firmware" >&2
+  return 1
 }
 
 firewall_lan_ifaces() {
@@ -1352,10 +1493,15 @@ firewall_clean_iptables() {
   iptables -t nat -S PREROUTING 2>/dev/null | grep 'STARGATE_' | sed 's/^-A /-D /' | while read -r rule; do
     iptables -t nat $rule 2>/dev/null || true
   done
+  iptables -S FORWARD 2>/dev/null | grep 'STARGATE_QUIC' | sed 's/^-A /-D /' | while read -r rule; do
+    iptables $rule 2>/dev/null || true
+  done
   iptables -t nat -F STARGATE_DNS 2>/dev/null || true
   iptables -t nat -X STARGATE_DNS 2>/dev/null || true
   iptables -t nat -F STARGATE_TCP 2>/dev/null || true
   iptables -t nat -X STARGATE_TCP 2>/dev/null || true
+  iptables -F STARGATE_QUIC 2>/dev/null || true
+  iptables -X STARGATE_QUIC 2>/dev/null || true
 }
 
 firewall_apply_iptables() {
@@ -1371,11 +1517,19 @@ firewall_apply_iptables() {
   firewall_clean_iptables
   iptables -t nat -N STARGATE_DNS
   iptables -t nat -N STARGATE_TCP
+  if [ "$rules_block_quic" = "1" ]; then
+    iptables -N STARGATE_QUIC
+    iptables -A STARGATE_QUIC -p udp --dport 443 -j REJECT
+  fi
 
   iptables -t nat -A STARGATE_DNS -p udp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
   iptables -t nat -A STARGATE_DNS -p tcp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
 
   for cidr in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+    iptables -t nat -A STARGATE_TCP -d "$cidr" -j RETURN
+  done
+  list_valid_ip_cidrs "$rules_custom_direct_ips" | while read -r cidr; do
+    [ -n "$cidr" ] || continue
     iptables -t nat -A STARGATE_TCP -d "$cidr" -j RETURN
   done
   iptables -t nat -A STARGATE_TCP -p tcp -j REDIRECT --to-ports "$transparent_port"
@@ -1385,6 +1539,9 @@ firewall_apply_iptables() {
     if [ "$dns_hijack" = "1" ]; then
       iptables -t nat -A PREROUTING -i "$iface" -p udp --dport 53 -j STARGATE_DNS
       iptables -t nat -A PREROUTING -i "$iface" -p tcp --dport 53 -j STARGATE_DNS
+    fi
+    if [ "$rules_block_quic" = "1" ]; then
+      iptables -A FORWARD -i "$iface" -p udp --dport 443 -j STARGATE_QUIC
     fi
     iptables -t nat -A PREROUTING -i "$iface" -p tcp -j STARGATE_TCP
   done
@@ -1407,6 +1564,11 @@ firewall_apply_nft() {
 
   iface_set="$(firewall_lan_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
   [ -n "$iface_set" ] || iface_set='"br-lan"'
+  direct_ip_set="$(list_valid_ip_cidrs "$rules_custom_direct_ips" | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
+  direct_ip_return=""
+  if [ -n "$direct_ip_set" ]; then
+    direct_ip_return="    iifname { $iface_set } ip daddr { $direct_ip_set } return"
+  fi
   firewall_clean_nft
   tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
   cat >"$tmp_nft" <<EOF
@@ -1416,12 +1578,20 @@ table inet stargate {
     iifname { $iface_set } udp dport 53 redirect to :$dns_hijack_port
     iifname { $iface_set } tcp dport 53 redirect to :$dns_hijack_port
     iifname { $iface_set } ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
+$direct_ip_return
     iifname { $iface_set } tcp redirect to :$transparent_port
+  }
+  chain forward {
+    type filter hook forward priority filter; policy accept;
+    iifname { $iface_set } udp dport 443 reject
   }
 }
 EOF
   if [ "$dns_hijack" != "1" ]; then
     sed -i '/dport 53/d' "$tmp_nft"
+  fi
+  if [ "$rules_block_quic" != "1" ]; then
+    sed -i '/chain forward {/,/}/d' "$tmp_nft"
   fi
   nft -f "$tmp_nft"
   rm -f "$tmp_nft"
@@ -1488,6 +1658,7 @@ firewall_status_text() {
   printf 'LAN interfaces: %s\n' "$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   printf 'Transparent: %s %s:%s\n' "$transparent_proxy" "$transparent_mode" "$transparent_port"
   printf 'DNS redirect: %s:%s\n' "$dns_hijack" "$dns_hijack_port"
+  printf 'QUIC block: %s\n' "$rules_block_quic"
 }
 
 firewall_status_json() {
@@ -1500,7 +1671,7 @@ firewall_status_json() {
     active=true
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port"
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic"
   printf '{"backend":"%s","active":%s,"message":"%s"}' "$backend" "$active" "$(printf '%s' "$message" | json_escape)"
 }
 
@@ -1617,6 +1788,8 @@ config rules 'rules'
 	option private_direct '1'
 	option custom_direct_domains ''
 	option custom_proxy_domains ''
+	option custom_direct_ips ''
+	option custom_proxy_ips ''
 
 config safety 'safety'
 	option backup_on_apply '1'

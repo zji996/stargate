@@ -84,6 +84,20 @@ return view.extend({
     proxyDomains.depends('mode', 'blacklist');
     proxyDomains.depends('mode', 'whitelist');
 
+    var directIps = s.option(form.TextValue, 'custom_direct_ips', _('User direct IP/CIDR'));
+    directIps.rows = 4;
+    directIps.wrap = 'off';
+    directIps.description = _('One IPv4 or CIDR per line. These IP ranges always go direct.');
+    directIps.depends('mode', 'blacklist');
+    directIps.depends('mode', 'whitelist');
+
+    var proxyIps = s.option(form.TextValue, 'custom_proxy_ips', _('User proxy IP/CIDR'));
+    proxyIps.rows = 4;
+    proxyIps.wrap = 'off';
+    proxyIps.description = _('One IPv4 or CIDR per line. Use this for services that connect by IP and should not go direct.');
+    proxyIps.depends('mode', 'blacklist');
+    proxyIps.depends('mode', 'whitelist');
+
     var actions = s.option(form.DummyValue, '_rules_actions', _('Rule actions'));
     actions.rawhtml = true;
     actions.cfgvalue = function() {
@@ -178,7 +192,7 @@ return view.extend({
     var blockQuic = s.option(form.Flag, 'block_quic', _('Block QUIC'));
     blockQuic.default = '0';
     blockQuic.rmempty = false;
-    blockQuic.description = _('Reject UDP/443 so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. This can make proxy routing more predictable, but may reduce speed for services that benefit from QUIC.');
+    blockQuic.description = _('Reject LAN UDP/443 at the firewall so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. Re-apply forwarding after changing this option.');
 
     return m.render();
   }
