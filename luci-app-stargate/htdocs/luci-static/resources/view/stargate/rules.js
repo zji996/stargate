@@ -190,7 +190,7 @@ return view.extend({
     privateDirect.rmempty = false;
 
     var blockQuic = s.option(form.Flag, 'block_quic', _('Block QUIC'));
-    blockQuic.default = '0';
+    blockQuic.default = '1';
     blockQuic.rmempty = false;
     blockQuic.description = _('Reject LAN UDP/443 at the firewall so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. Re-apply forwarding after changing this option.');
 

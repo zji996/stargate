@@ -151,7 +151,7 @@ private_direct.default = "1"
 private_direct.rmempty = false
 
 block_quic = s:option(Flag, "block_quic", translate("Block QUIC"))
-block_quic.default = "0"
+block_quic.default = "1"
 block_quic.rmempty = false
 block_quic.description = ui_text("Reject LAN UDP/443 at the firewall so browsers and apps fall back from HTTP/3/QUIC to TCP/TLS. Re-apply forwarding after changing this option.", "在防火墙层拒绝局域网 UDP/443，让浏览器和应用从 HTTP/3/QUIC 回退到 TCP/TLS。修改后需要重新应用转发。")
 

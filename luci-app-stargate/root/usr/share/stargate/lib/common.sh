@@ -95,7 +95,7 @@ load_config() {
   rules_custom_direct_ips="$(uci_get rules custom_direct_ips '')"
   rules_custom_proxy_ips="$(uci_get rules custom_proxy_ips '')"
   rules_private_direct="$(uci_get rules private_direct 1)"
-  rules_block_quic="$(uci_get rules block_quic 0)"
+  rules_block_quic="$(uci_get rules block_quic 1)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
 }
 
