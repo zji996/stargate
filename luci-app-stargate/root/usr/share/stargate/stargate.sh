@@ -574,12 +574,39 @@ ipv4_to_int() {
   '
 }
 
+parse_ipv4_cidrs() {
+  list="$1"
+  printf '%s\n' "$list" | tr ', \t' '\n\n\n' | awk '
+    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function valid_ip(ip, parts, i, n) {
+      n = split(ip, parts, ".")
+      if (n != 4) return 0
+      for (i = 1; i <= 4; i++) {
+        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return 0
+      }
+      return 1
+    }
+    {
+      line = trim($0)
+      if (line == "" || line ~ /^#/) next
+      sub(/^ip-cidr:/, "", line)
+      split(line, cidr, "/")
+      ip = cidr[1]
+      prefix = cidr[2]
+      if (prefix == "") prefix = 32
+      if (!valid_ip(ip) || prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
+      value = ip "/" prefix
+      if (!seen[value]++) print value
+    }
+  '
+}
+
 custom_ip_match() {
   list="$1"
   target="$2"
   is_ipv4 "$target" || return 1
   target_int="$(ipv4_to_int "$target" 2>/dev/null)" || return 1
-  printf '%s\n' "$list" | tr ', \t' '\n\n\n' | awk -v target="$target" -v target_int="$target_int" '
+  parse_ipv4_cidrs "$list" | awk -F/ -v target_int="$target_int" '
     function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
     function ipint(ip, parts, i, n) {
       n = split(ip, parts, ".")
@@ -591,20 +618,14 @@ custom_ip_match() {
     }
     function pow2(n, r) { r = 1; while (n-- > 0) r *= 2; return r }
     {
-      line = trim($0)
-      if (line == "" || line ~ /^#/) next
-      sub(/^ip-cidr:/, "", line)
-      split(line, cidr, "/")
-      base = cidr[1]
-      prefix = cidr[2]
-      if (prefix == "") prefix = 32
-      if (prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
+      base = trim($1)
+      prefix = $2
       base_int = ipint(base)
       if (base_int < 0) next
       size = pow2(32 - prefix)
       network = int(base_int / size) * size
       if (target_int >= network && target_int < network + size) {
-        print line
+        print base "/" prefix
         found = 1
         exit
       }
@@ -641,62 +662,9 @@ custom_domain_match() {
 write_inline_ip_rule() {
   list="$1"
   outbound="$2"
-  cidrs="$(printf '%s\n' "$list" | tr ', \t' '\n\n\n' | awk '
-    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
-    function valid_ip(ip, parts, i, n) {
-      n = split(ip, parts, ".")
-      if (n != 4) return 0
-      for (i = 1; i <= 4; i++) {
-        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return 0
-      }
-      return 1
-    }
-    function emit(v) {
-      if (seen[v]) return
-      seen[v] = 1
-      if (count++) printf ", "
-      printf "\"%s\"", v
-    }
-    {
-      line = trim($0)
-      if (line == "" || line ~ /^#/) next
-      sub(/^ip-cidr:/, "", line)
-      split(line, cidr, "/")
-      ip = cidr[1]
-      prefix = cidr[2]
-      if (prefix == "") prefix = 32
-      if (!valid_ip(ip) || prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
-      emit(ip "/" prefix)
-    }
-  ')"
+  cidrs="$(parse_ipv4_cidrs "$list" | awk '{ if (count++) printf ", "; printf "\"%s\"", $0 }')"
   [ -n "$cidrs" ] || return 0
   printf '{ "ip_cidr": [%s], "outbound": "%s" }' "$cidrs" "$outbound"
-}
-
-list_valid_ip_cidrs() {
-  printf '%s\n' "$1" | tr ', \t' '\n\n\n' | awk '
-    function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
-    function valid_ip(ip, parts, i, n) {
-      n = split(ip, parts, ".")
-      if (n != 4) return 0
-      for (i = 1; i <= 4; i++) {
-        if (parts[i] !~ /^[0-9]+$/ || parts[i] < 0 || parts[i] > 255) return 0
-      }
-      return 1
-    }
-    {
-      line = trim($0)
-      if (line == "" || line ~ /^#/) next
-      sub(/^ip-cidr:/, "", line)
-      split(line, cidr, "/")
-      ip = cidr[1]
-      prefix = cidr[2]
-      if (prefix == "") prefix = 32
-      if (!valid_ip(ip) || prefix !~ /^[0-9]+$/ || prefix < 0 || prefix > 32) next
-      value = ip "/" prefix
-      if (!seen[value]++) print value
-    }
-  '
 }
 
 rule_set_match() {
@@ -1528,7 +1496,7 @@ firewall_apply_iptables() {
   for cidr in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
     iptables -t nat -A STARGATE_TCP -d "$cidr" -j RETURN
   done
-  list_valid_ip_cidrs "$rules_custom_direct_ips" | while read -r cidr; do
+  parse_ipv4_cidrs "$rules_custom_direct_ips" | while read -r cidr; do
     [ -n "$cidr" ] || continue
     iptables -t nat -A STARGATE_TCP -d "$cidr" -j RETURN
   done
@@ -1564,7 +1532,7 @@ firewall_apply_nft() {
 
   iface_set="$(firewall_lan_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
   [ -n "$iface_set" ] || iface_set='"br-lan"'
-  direct_ip_set="$(list_valid_ip_cidrs "$rules_custom_direct_ips" | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
+  direct_ip_set="$(parse_ipv4_cidrs "$rules_custom_direct_ips" | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
   direct_ip_return=""
   if [ -n "$direct_ip_set" ]; then
     direct_ip_return="    iifname { $iface_set } ip daddr { $direct_ip_set } return"
