@@ -23,6 +23,7 @@ Usage:
   /usr/share/stargate/stargate.sh firewall-apply
   /usr/share/stargate/stargate.sh firewall-clean
   /usr/share/stargate/stargate.sh firewall-status
+  /usr/share/stargate/stargate.sh firewall-apply-rules
   /usr/share/stargate/stargate.sh probe baidu|google|github
   /usr/share/stargate/stargate.sh node-add label server port password sni insecure
   /usr/share/stargate/stargate.sh node-add-link anytls://...
@@ -66,6 +67,7 @@ case "$action" in
   stop) stop_service ;;
   status) status_json ;;
   firewall-apply) firewall_apply ;;
+  firewall-apply-rules) firewall_apply_rules ;;
   firewall-clean) firewall_clean ;;
   firewall-status) firewall_status_text ;;
   probe) probe_url "${2:-}" ;;

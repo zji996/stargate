@@ -43,6 +43,7 @@ start_service() {
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_close_instance
+  /usr/share/stargate/stargate.sh firewall-apply-rules >/dev/null 2>&1 || true
 }
 
 reload_service() {
