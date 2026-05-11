@@ -51,6 +51,19 @@ local function millis(value)
   return math.floor(number * 1000 + 0.5)
 end
 
+local function trim(value)
+  return (value or ""):gsub("%s+$", "")
+end
+
+local function uci_get(config, section, option, default)
+  local sys = require "luci.sys"
+  local value = trim(sys.exec("uci -q get " .. shellquote(config .. "." .. section .. "." .. option) .. " 2>/dev/null"))
+  if value == "" then
+    return default or ""
+  end
+  return value
+end
+
 function connect_status()
   local http = require "luci.http"
   local jsonc = require "luci.jsonc"
@@ -86,14 +99,32 @@ function connect_status()
   }
 
   if probe then
+    local transparent = uci_get("stargate", "inbound", "transparent_proxy", "0") == "1"
+    local service_state = trim(sys.exec("/etc/init.d/stargate status 2>/dev/null"))
+    local proxy_mode = "direct"
+    local proxy_arg = ""
+    local proxy_label = "Direct local outlet"
+
+    if transparent and service_state == "running" then
+      local http_listen = uci_get("stargate", "inbound", "http_listen", "127.0.0.1")
+      local http_port = uci_get("stargate", "inbound", "http_port", "10809")
+      if http_listen == "0.0.0.0" or http_listen == "::" or http_listen == "" then
+        http_listen = "127.0.0.1"
+      end
+      proxy_mode = "transparent"
+      proxy_arg = "--proxy " .. shellquote("http://" .. http_listen .. ":" .. http_port)
+      proxy_label = "Stargate transparent path"
+    end
+
     local route_target = sys.exec("resolveip -4 " .. shellquote(probe.host) .. " 2>/dev/null | head -1")
-    route_target = route_target:gsub("%s+$", "")
+    route_target = trim(route_target)
     if route_target == "" then
       route_target = probe.host
     end
     local route = sys.exec("ip route get " .. shellquote(route_target) .. " 2>/dev/null | head -1")
     local cmd = table.concat({
-      "out=$(curl --noproxy '*' -L -sS -o /dev/null",
+      "out=$(curl -L -sS -o /dev/null",
+      proxy_arg ~= "" and proxy_arg or "--noproxy '*'",
       "--connect-timeout 4 --max-time 8",
       "-w 'code=%{http_code} dns=%{time_namelookup} tcp=%{time_connect} tls=%{time_appconnect} total=%{time_total}'",
       shellquote(probe.url),
@@ -106,7 +137,10 @@ function connect_status()
 
     result.name = probe.name
     result.url = probe.url
-    result.route = route:gsub("%s+$", "")
+    result.mode = proxy_mode
+    result.mode_label = proxy_label
+    result.proxy = proxy_arg ~= ""
+    result.route = trim(route)
     result.dev = route:match("%sdev%s+(%S+)") or ""
     result.src = route:match("%ssrc%s+(%S+)") or ""
     result.rc = rc

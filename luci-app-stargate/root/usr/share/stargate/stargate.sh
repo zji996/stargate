@@ -1280,19 +1280,38 @@ probe_url() {
     exit 1
   fi
 
-  result="$(curl -L -sS -o /dev/null \
-    --connect-timeout 5 \
-    --max-time 10 \
-    -w '%{http_code} %{time_total}' \
-    "$url" 2>&1)" || {
-      echo "$name failed: $result"
-      exit 1
-    }
+  mode="direct local outlet"
+  if [ "$transparent_proxy" = "1" ] && /etc/init.d/stargate status >/dev/null 2>&1; then
+    proxy_host="$http_listen"
+    case "$proxy_host" in
+      ''|0.0.0.0|::) proxy_host="127.0.0.1" ;;
+    esac
+    mode="Stargate transparent path"
+    result="$(curl -L -sS -o /dev/null \
+      --proxy "http://$proxy_host:$http_port" \
+      --connect-timeout 5 \
+      --max-time 10 \
+      -w '%{http_code} %{time_total}' \
+      "$url" 2>&1)" || {
+        echo "$name $mode failed: $result"
+        exit 1
+      }
+  else
+    result="$(curl -L -sS -o /dev/null \
+      --noproxy '*' \
+      --connect-timeout 5 \
+      --max-time 10 \
+      -w '%{http_code} %{time_total}' \
+      "$url" 2>&1)" || {
+        echo "$name $mode failed: $result"
+        exit 1
+      }
+  fi
 
   code="${result%% *}"
   total="${result##* }"
   ms="$(awk "BEGIN { printf \"%d\", $total * 1000 }" 2>/dev/null || printf '?')"
-  echo "$name HTTP $code ${ms}ms"
+  echo "$name $mode HTTP $code ${ms}ms"
 }
 
 logs_text() {

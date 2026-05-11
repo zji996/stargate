@@ -51,6 +51,7 @@ function dash.cfgvalue()
   local checking = ui_text("Check...", "检测中...")
   local problem = ui_text("Problem detected!", "检测异常")
   local direct_outlet = ui_text("Direct local outlet", "本机直连出口")
+  local transparent_outlet = ui_text("Stargate transparent path", "Stargate 透明代理路径")
 
   local function card(title, value, note, class, icon)
     return '<div class="stargate-card ' .. (class or "") .. '">' ..
@@ -69,7 +70,7 @@ function dash.cfgvalue()
       '<span class="stargate-card-body">' ..
       '<span class="stargate-card-title">' .. util.pcdata(title) .. '</span>' ..
       '<span id="stargate-' .. target .. '-status" class="stargate-probe-value stargate-muted">' .. util.pcdata(touch_check) .. '</span>' ..
-      '<span id="stargate-' .. target .. '-note" class="stargate-card-note">' .. util.pcdata(direct_outlet) .. '</span>' ..
+      '<span id="stargate-' .. target .. '-note" class="stargate-card-note">' .. util.pcdata(transparent_enabled == "1" and transparent_outlet or direct_outlet) .. '</span>' ..
       '</span>' ..
       '</button>'
   end
@@ -128,7 +129,7 @@ function dash.cfgvalue()
     '//<![CDATA[',
     'function stargateProbeClass(ms, ok){if(!ok)return "stargate-bad";if(ms<800)return "stargate-ok";if(ms<1800)return "stargate-warn";return "stargate-bad";}',
     'function stargateSetProbe(target, text, note, cls){var s=document.getElementById("stargate-"+target+"-status");var n=document.getElementById("stargate-"+target+"-note");if(s){s.className="stargate-probe-value "+cls;s.innerHTML=text;}if(n){n.innerHTML=note||"";}}',
-    'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. direct_outlet .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note="HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" "+note,"stargate-bad");}});}',
+    'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. (transparent_enabled == "1" and transparent_outlet or direct_outlet) .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var mode=(rv.mode==="transparent")?"' .. transparent_outlet .. '":"' .. direct_outlet .. '";var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note=mode+" / HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" / "+note,"stargate-bad");}});}',
     'function stargateRuntimeCheckboxes(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");var row=document.getElementById("cbi-stargate-inbound-transparent_proxy");if(!local||!transparent)return;var on=!!local.checked;if(!on)transparent.checked=false;if(row){if(on)row.classList.remove("stargate-disabled");else row.classList.add("stargate-disabled");}}',
     'document.addEventListener("DOMContentLoaded",function(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");if(local)local.addEventListener("change",stargateRuntimeCheckboxes);if(transparent)transparent.addEventListener("change",function(){if(local&&!local.checked)this.checked=false;stargateRuntimeCheckboxes();});stargateRuntimeCheckboxes();});',
     '//]]>',

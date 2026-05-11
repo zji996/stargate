@@ -38,7 +38,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 2026-05-10 测试路由器上系统已有 `/usr/bin/sing-box`，PassWall2 也配置使用该路径。Stargate 应共用系统 sing-box 二进制，但保持独立配置和服务。
 - 2026-05-10 在测试路由器上做过隔离测试：`sing-box check` 通过，短时运行只监听临时本机端口，没有接管透明代理、DNS 或防火墙。
 - 2026-05-11 在路由器上部署 LuCI 时发现该固件不支持 Lua controller 的 `view()` 入口，已改用 `cbi()` + `luasrc/model/cbi/stargate/client/*.lua`。服务菜单已正常出现。
-- Overview 状态面板参考 PassWall2 的点击式检测体验，但检测固定为路由器本机直连出口，并返回 HTTP 状态、延迟、出口 dev/src，便于排查 Tailscale、策略路由或多 WAN 影响。
+- Overview 状态面板参考 PassWall2 的点击式检测体验；透明代理开启且 Stargate 正在运行时，连接检测会走 Stargate 本地 HTTP 入站以体现代理后的可达状态，否则检测路由器本机直连出口。检测结果返回 HTTP 状态、延迟、出口 dev/src 和检测路径。
 - Overview 保留状态、连接检测和勾选式启用入口：先勾选本机代理，之后才允许勾选透明代理，并通过 LuCI 右下角保存应用提交。透明代理默认仍关闭，不会在未显式勾选时接管网络。
 - 日志独立为 Logs 页；Maintenance（维护）页分为 `sing-box 设置` 和 `备份还原` 两块，前者只保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 的备份还原体验，提供下载备份、恢复备份、恢复默认配置和保留生成配置回滚。
 - 未配置当前节点时，Overview 会显示阻塞提示；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
