@@ -6,7 +6,7 @@ s.anonymous = true
 mode = s:option(ListValue, "mode", translate("Mode"))
 mode:value("tcp_doh", translate("TCP direct + DoH remote"))
 mode.default = "tcp_doh"
-mode.description = translate("Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node. Stargate only writes sing-box internal DNS and does not take over dnsmasq.")
+mode.description = translate("Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node.")
 
 strategy = s:option(ListValue, "strategy", translate("Strategy"))
 strategy:value("prefer_ipv4", "prefer_ipv4")
@@ -71,8 +71,14 @@ final:value("local", translate("System local"))
 final.default = "direct-dns"
 final.description = translate("Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.")
 
-hijack_dns = s:option(Flag, "hijack_dns", translate("DNS hijack"))
-hijack_dns.default = "0"
+hijack_dns = s:option(Flag, "hijack_dns", translate("DNS redirect"))
+hijack_dns.description = translate("Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied.")
+hijack_dns.default = "1"
 hijack_dns.rmempty = false
+
+hijack_port = s:option(Value, "hijack_port", translate("DNS redirect port"))
+hijack_port.default = "1053"
+hijack_port.datatype = "port"
+hijack_port:depends("hijack_dns", "1")
 
 return m

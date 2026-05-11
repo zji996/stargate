@@ -20,6 +20,9 @@ Usage:
   /usr/share/stargate/stargate.sh start-transparent [redirect|tproxy] [port]
   /usr/share/stargate/stargate.sh stop
   /usr/share/stargate/stargate.sh status
+  /usr/share/stargate/stargate.sh firewall-apply
+  /usr/share/stargate/stargate.sh firewall-clean
+  /usr/share/stargate/stargate.sh firewall-status
   /usr/share/stargate/stargate.sh probe baidu|google|github
   /usr/share/stargate/stargate.sh node-add label server port password sni insecure
   /usr/share/stargate/stargate.sh node-add-link anytls://...
@@ -125,6 +128,8 @@ load_config() {
   dns_remote_type="$(uci_get dns remote_type https)"
   dns_remote_path="$(uci_get dns remote_path /dns-query)"
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
+  dns_hijack="$(bool_value "$(uci_get dns hijack_dns 1)")"
+  dns_hijack_port="$(uci_get dns hijack_port 1053)"
 
   rules_mode="$(uci_get rules mode blacklist)"
   rules_default_outbound="direct"
@@ -156,6 +161,8 @@ validate_config() {
   case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
+  case "$dns_hijack_port" in ''|*[!0-9]*) echo "DNS hijack port must be numeric" >&2; exit 1 ;; esac
+  [ "$dns_hijack_port" -gt 0 ] && [ "$dns_hijack_port" -le 65535 ] || { echo "DNS hijack port must be between 1 and 65535" >&2; exit 1; }
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
   case "$socks_port" in ''|*[!0-9]*) echo "SOCKS port must be numeric" >&2; exit 1 ;; esac
@@ -690,6 +697,17 @@ write_inbounds() {
       printf '\n'
     fi
     printf '    }'
+    if [ "$dns_hijack" = "1" ]; then
+      printf ',\n'
+      printf '    {\n'
+      printf '      "type": "direct",\n'
+      printf '      "tag": "dns-in",\n'
+      printf '      "listen": "0.0.0.0",\n'
+      printf '      "listen_port": %s,\n' "$dns_hijack_port"
+      printf '      "override_address": "1.0.0.1",\n'
+      printf '      "override_port": 53\n'
+      printf '    }'
+    fi
   fi
   printf '\n'
 }
@@ -724,6 +742,9 @@ write_route_rules() {
 
   if [ "$transparent_proxy" = "1" ]; then
     add_rule '{ "inbound": ["transparent-in"], "action": "sniff" }'
+    if [ "$dns_hijack" = "1" ]; then
+      add_rule '{ "inbound": ["dns-in"], "action": "hijack-dns" }'
+    fi
   fi
   if [ "$rules_block_quic" = "1" ]; then
     add_rule '{ "network": "udp", "port": 443, "action": "reject" }'
@@ -943,6 +964,7 @@ start_local_proxy() {
   uci_cmd set "$app.inbound.transparent_proxy=0"
   uci_commit
   if apply_config && restart_service_with_rollback; then
+    firewall_clean >/dev/null 2>&1 || true
     echo "started local proxy mode"
   else
     rc=$?
@@ -969,10 +991,11 @@ start_transparent_proxy() {
   uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
   uci_cmd set "$app.inbound.transparent_port=$port"
   uci_commit
-  if apply_config && restart_service_with_rollback; then
+  if apply_config && restart_service_with_rollback && firewall_apply; then
     echo "started transparent proxy mode: $mode"
   else
     rc=$?
+    firewall_clean >/dev/null 2>&1 || true
     restore_transparent_uci
     exit "$rc"
   fi
@@ -984,6 +1007,7 @@ stop_service() {
     exit 1
   }
   /etc/init.d/stargate stop
+  firewall_clean >/dev/null 2>&1 || true
   echo "service stopped"
 }
 
@@ -1013,6 +1037,9 @@ status_json() {
   printf '"transparent_mode":"%s",' "$transparent_mode"
   printf '"transparent_listen":"%s",' "$(printf '%s' "$transparent_listen" | json_escape)"
   printf '"transparent_port":"%s",' "$(printf '%s' "$transparent_port" | json_escape)"
+  printf '"dns_hijack":%s,' "$(bool_json "$dns_hijack")"
+  printf '"dns_hijack_port":"%s",' "$(printf '%s' "$dns_hijack_port" | json_escape)"
+  printf '"firewall":%s,' "$(firewall_status_json)"
   printf '"socks_listen":"%s",' "$(printf '%s' "$socks_listen" | json_escape)"
   printf '"socks_port":"%s",' "$(printf '%s' "$socks_port" | json_escape)"
   printf '"http_listen":"%s",' "$(printf '%s' "$http_listen" | json_escape)"
@@ -1066,6 +1093,157 @@ probe_url() {
 
 logs_text() {
   logread -e stargate -e sing-box 2>/dev/null | tail -160 || true
+}
+
+firewall_lan_ifaces() {
+  ifaces="$(uci -q get network.lan.device 2>/dev/null || true)"
+  [ -n "$ifaces" ] || ifaces="$(uci -q get network.lan.ifname 2>/dev/null || true)"
+  [ -n "$ifaces" ] || ifaces="br-lan"
+  printf '%s\n' $ifaces
+}
+
+firewall_clean_iptables() {
+  command -v iptables >/dev/null 2>&1 || return 0
+  iptables -t nat -S PREROUTING 2>/dev/null | grep 'STARGATE_' | sed 's/^-A /-D /' | while read -r rule; do
+    iptables -t nat $rule 2>/dev/null || true
+  done
+  iptables -t nat -F STARGATE_DNS 2>/dev/null || true
+  iptables -t nat -X STARGATE_DNS 2>/dev/null || true
+  iptables -t nat -F STARGATE_TCP 2>/dev/null || true
+  iptables -t nat -X STARGATE_TCP 2>/dev/null || true
+}
+
+firewall_apply_iptables() {
+  command -v iptables >/dev/null 2>&1 || {
+    echo "iptables is required for this firewall backend" >&2
+    return 1
+  }
+  [ "$transparent_mode" = "redirect" ] || {
+    echo "iptables backend currently supports redirect mode only" >&2
+    return 1
+  }
+
+  firewall_clean_iptables
+  iptables -t nat -N STARGATE_DNS
+  iptables -t nat -N STARGATE_TCP
+
+  iptables -t nat -A STARGATE_DNS -p udp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
+  iptables -t nat -A STARGATE_DNS -p tcp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
+
+  for cidr in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
+    iptables -t nat -A STARGATE_TCP -d "$cidr" -j RETURN
+  done
+  iptables -t nat -A STARGATE_TCP -p tcp -j REDIRECT --to-ports "$transparent_port"
+
+  firewall_lan_ifaces | while read -r iface; do
+    [ -n "$iface" ] || continue
+    if [ "$dns_hijack" = "1" ]; then
+      iptables -t nat -A PREROUTING -i "$iface" -p udp --dport 53 -j STARGATE_DNS
+      iptables -t nat -A PREROUTING -i "$iface" -p tcp --dport 53 -j STARGATE_DNS
+    fi
+    iptables -t nat -A PREROUTING -i "$iface" -p tcp -j STARGATE_TCP
+  done
+}
+
+firewall_clean_nft() {
+  command -v nft >/dev/null 2>&1 || return 0
+  nft delete table inet stargate 2>/dev/null || true
+}
+
+firewall_apply_nft() {
+  command -v nft >/dev/null 2>&1 || {
+    echo "nft is required for this firewall backend" >&2
+    return 1
+  }
+  [ "$transparent_mode" = "redirect" ] || {
+    echo "nft backend currently supports redirect mode only" >&2
+    return 1
+  }
+
+  iface_set="$(firewall_lan_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
+  [ -n "$iface_set" ] || iface_set='"br-lan"'
+  firewall_clean_nft
+  tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
+  cat >"$tmp_nft" <<EOF
+table inet stargate {
+  chain prerouting {
+    type nat hook prerouting priority dstnat; policy accept;
+    iifname { $iface_set } udp dport 53 redirect to :$dns_hijack_port
+    iifname { $iface_set } tcp dport 53 redirect to :$dns_hijack_port
+    iifname { $iface_set } ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
+    iifname { $iface_set } tcp redirect to :$transparent_port
+  }
+}
+EOF
+  if [ "$dns_hijack" != "1" ]; then
+    sed -i '/dport 53/d' "$tmp_nft"
+  fi
+  nft -f "$tmp_nft"
+  rm -f "$tmp_nft"
+}
+
+firewall_backend() {
+  if command -v nft >/dev/null 2>&1; then
+    printf nft
+  elif command -v iptables >/dev/null 2>&1; then
+    printf iptables
+  else
+    printf none
+  fi
+}
+
+firewall_apply() {
+  load_config
+  if [ "$transparent_proxy" != "1" ]; then
+    firewall_clean
+    echo "firewall cleaned; transparent proxy is disabled"
+    return 0
+  fi
+  validate_config
+  backend="$(firewall_backend)"
+  case "$backend" in
+    nft) firewall_apply_nft ;;
+    iptables) firewall_apply_iptables ;;
+    *) echo "no supported firewall backend found" >&2; return 1 ;;
+  esac
+  echo "firewall applied with $backend"
+}
+
+firewall_clean() {
+  firewall_clean_nft
+  firewall_clean_iptables
+  echo "firewall cleaned"
+}
+
+firewall_status_text() {
+  load_config
+  backend="$(firewall_backend)"
+  active="no"
+  if command -v nft >/dev/null 2>&1 && nft list table inet stargate >/dev/null 2>&1; then
+    active="yes"
+  fi
+  if command -v iptables >/dev/null 2>&1 && iptables -t nat -S 2>/dev/null | grep -q 'STARGATE_'; then
+    active="yes"
+  fi
+  printf 'Backend: %s\n' "$backend"
+  printf 'Active: %s\n' "$active"
+  printf 'LAN interfaces: %s\n' "$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  printf 'Transparent: %s %s:%s\n' "$transparent_proxy" "$transparent_mode" "$transparent_port"
+  printf 'DNS redirect: %s:%s\n' "$dns_hijack" "$dns_hijack_port"
+}
+
+firewall_status_json() {
+  backend="$(firewall_backend)"
+  active=false
+  if command -v nft >/dev/null 2>&1 && nft list table inet stargate >/dev/null 2>&1; then
+    active=true
+  fi
+  if command -v iptables >/dev/null 2>&1 && iptables -t nat -S 2>/dev/null | grep -q 'STARGATE_'; then
+    active=true
+  fi
+  lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port"
+  printf '{"backend":"%s","active":%s,"message":"%s"}' "$backend" "$active" "$(printf '%s' "$message" | json_escape)"
 }
 
 backup_create() {
@@ -1168,7 +1346,8 @@ config dns 'dns'
 	option remote_type 'https'
 	option remote_path '/dns-query'
 	option remote_detour 'anytls-out'
-	option hijack_dns '0'
+	option hijack_dns '1'
+	option hijack_port '1053'
 
 config rules 'rules'
 	option mode 'blacklist'
@@ -1243,6 +1422,9 @@ case "$action" in
   start-transparent) start_transparent_proxy "${2:-redirect}" "${3:-}" ;;
   stop) stop_service ;;
   status) status_json ;;
+  firewall-apply) firewall_apply ;;
+  firewall-clean) firewall_clean ;;
+  firewall-status) firewall_status_text ;;
   probe) probe_url "${2:-}" ;;
   node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" ;;
   node-add-link) node_add_link "${2:-}" ;;

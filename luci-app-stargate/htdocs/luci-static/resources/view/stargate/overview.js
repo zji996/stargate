@@ -3,6 +3,7 @@
 'require form';
 'require fs';
 'require uci';
+'require ui';
 
 function parseStatus(text) {
   try {
@@ -18,12 +19,16 @@ return view.extend({
       uci.load('stargate'),
       fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'status' ]).then(parseStatus).catch(function(err) {
         return { service: String(err), singbox: '' };
+      }),
+      fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'firewall-status' ]).catch(function() {
+        return '';
       })
     ]);
   },
 
   render: function(data) {
     var status = data[1] || {};
+    var firewallStatus = data[2] || '';
     var m = new form.Map('stargate', _('Stargate'));
     m.description = _('Runtime status, proxy mode, and local outlet checks.');
 
@@ -57,6 +62,10 @@ return view.extend({
           '.stargate-card-note{display:block;font-size:11px;opacity:.72;margin-top:5px;line-height:1.35}',
           '.stargate-icon{display:flex;align-items:center;justify-content:center;flex:0 0 42px;width:42px;height:42px;border-radius:50%;font-size:18px;font-weight:700;color:#fff;background:#687485}',
           '.stargate-alert{max-width:880px;margin:0 auto 14px;padding:11px 13px;border:1px solid rgba(251,99,64,.55);border-radius:6px;color:#fb6340;background:rgba(251,99,64,.08)}',
+          '.stargate-firewall{max-width:880px;margin:12px auto 14px;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}',
+          '.stargate-firewall-title{font-weight:700;margin-bottom:6px}',
+          '.stargate-firewall-status{font-size:12px;line-height:1.5;white-space:pre-wrap;opacity:.78}',
+          '.stargate-firewall-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
           '#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{max-width:880px;margin:12px auto;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05);display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:12px;align-items:center}',
           '#cbi-stargate-global-enabled .cbi-value-title,#cbi-stargate-inbound-transparent_proxy .cbi-value-title{font-weight:700}',
           '#cbi-stargate-global-enabled .cbi-value-description,#cbi-stargate-inbound-transparent_proxy .cbi-value-description{display:block;margin-top:5px;font-size:11px;line-height:1.45;opacity:.72}',
@@ -67,7 +76,7 @@ return view.extend({
           '#cbi-stargate-inbound-transparent_proxy.stargate-disabled .cbi-value-description:after{content:" ' + _('Enable local proxy first.') + '";color:#fb9a05}',
           '#cbi-stargate-inbound-transparent_mode,#cbi-stargate-inbound-transparent_port{max-width:880px;margin-left:auto;margin-right:auto}',
           '@media screen and (max-width:1180px){.stargate-dashboard{grid-template-columns:repeat(2,minmax(220px,1fr))}}',
-          '@media screen and (max-width:720px){.stargate-dashboard,#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{grid-template-columns:1fr}.stargate-card{min-height:84px}}'
+          '@media screen and (max-width:720px){.stargate-dashboard,.stargate-firewall,#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{grid-template-columns:1fr}.stargate-card{min-height:84px}}'
         ].join('')),
         blocked ? E('div', { 'class': 'stargate-alert' }, _('No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate.')) : '',
         E('div', { 'class': 'stargate-dashboard' }, [
@@ -75,6 +84,28 @@ return view.extend({
           card('sing-box', status.singbox || _('not detected'), status.config_file || '/etc/stargate/config.json', 'SB'),
           card(_('Local proxy'), (status.socks_listen || '127.0.0.1') + ':' + (status.socks_port || '10808'), 'HTTP ' + (status.http_listen || '127.0.0.1') + ':' + (status.http_port || '10809'), 'P'),
           card(_('Node'), status.node_ready ? (status.node_server || _('Active node')) : _('not ready'), status.node_ready ? _('AnyTLS primary') : _('Add and use a node first'), 'N')
+        ]),
+        E('div', { 'class': 'stargate-firewall' }, [
+          E('div', {}, [
+            E('div', { 'class': 'stargate-firewall-title' }, _('Firewall tool')),
+            E('div', { 'class': 'stargate-firewall-status' }, firewallStatus || '')
+          ]),
+          E('div', { 'class': 'stargate-firewall-actions' }, [
+            E('button', {
+              'class': 'btn cbi-button cbi-button-apply',
+              'click': ui.createHandlerFn(this, function() {
+                return fs.exec('/usr/share/stargate/stargate.sh', [ 'firewall-apply' ])
+                  .then(function() { window.location.reload(); });
+              })
+            }, [ _('Apply rules') ]),
+            E('button', {
+              'class': 'btn cbi-button',
+              'click': ui.createHandlerFn(this, function() {
+                return fs.exec('/usr/share/stargate/stargate.sh', [ 'firewall-clean' ])
+                  .then(function() { window.location.reload(); });
+              })
+            }, [ _('Clean rules') ])
+          ])
         ])
       ]);
     };
@@ -88,7 +119,7 @@ return view.extend({
     tp.anonymous = true;
 
     var enabled = tp.option(form.Flag, 'transparent_proxy', _('Transparent proxy'));
-    enabled.description = _('Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself.');
+    enabled.description = _('Optional transparent inbound. Enable local proxy first, then use the firewall tool to route managed devices through it.');
     enabled.default = '0';
     enabled.rmempty = false;
 

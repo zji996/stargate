@@ -18,6 +18,10 @@ load_uci() {
   config_get node_password node password ""
 }
 
+stop_service() {
+  /usr/share/stargate/stargate.sh firewall-clean >/dev/null 2>&1 || true
+}
+
 start_service() {
   load_uci
   [ -n "$node_server" ] && [ -n "$node_password" ] || {

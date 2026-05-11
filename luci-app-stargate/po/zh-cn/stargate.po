@@ -328,6 +328,9 @@ msgstr "直连 TCP + 远端 DoH"
 msgid "Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node. Stargate only writes sing-box internal DNS and does not take over dnsmasq."
 msgstr "推荐：直连域名使用国内 TCP DNS；命中代理规则的域名通过当前节点使用远端 DoH。Stargate 只写 sing-box 内部 DNS，不接管 dnsmasq。"
 
+msgid "Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node."
+msgstr "推荐：直连域名使用国内 TCP DNS；命中代理规则的域名通过当前节点使用远端 DoH。"
+
 msgid "Strategy"
 msgstr "策略"
 
@@ -411,6 +414,15 @@ msgstr "系统本地"
 
 msgid "DNS hijack"
 msgstr "DNS 劫持"
+
+msgid "DNS redirect"
+msgstr "DNS 重定向"
+
+msgid "Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied."
+msgstr "应用透明代理防火墙规则时，强制受管设备使用 Stargate DNS。"
+
+msgid "DNS redirect port"
+msgstr "DNS 重定向端口"
 
 msgid "Use Loyalsoldier as the base rule source. Pick a blacklist or whitelist routing mode, then add only the few domains you want to override."
 msgstr "以 Loyalsoldier 作为基础规则源。选择黑名单或白名单模式，只额外填写少量需要覆盖的域名。"
@@ -537,6 +549,18 @@ msgstr "启用 Stargate 本机 SOCKS/HTTP 入站。勾选后使用右下角“�
 
 msgid "Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself."
 msgstr "可选透明入站。需要先勾选本机代理；Stargate 仍不会自动写入防火墙或 DNS 接管规则。"
+
+msgid "Optional transparent inbound. Enable local proxy first, then use the firewall tool to route managed devices through it."
+msgstr "可选透明入站。需要先勾选本机代理；之后用防火墙工具让受管设备走透明代理。"
+
+msgid "Firewall tool"
+msgstr "防火墙工具"
+
+msgid "Apply rules"
+msgstr "应用规则"
+
+msgid "Clean rules"
+msgstr "清理规则"
 
 msgid "Enable local proxy first."
 msgstr "请先勾选本机代理。"

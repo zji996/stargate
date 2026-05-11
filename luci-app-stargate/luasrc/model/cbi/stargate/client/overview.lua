@@ -28,6 +28,14 @@ local function has_active_node()
   return server ~= "" and password ~= ""
 end
 
+local action = http.formvalue("stargate_firewall_action")
+local action_message = nil
+if action == "apply-firewall" then
+  action_message = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-apply 2>&1"))
+elseif action == "clean-firewall" then
+  action_message = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-clean 2>&1"))
+end
+
 s = m:section(NamedSection, "global", "global", translate("Overview"))
 s.anonymous = true
 
@@ -47,7 +55,9 @@ function dash.cfgvalue()
   local node_ready = has_active_node()
   local transparent_enabled = trim(sys.exec("uci -q get stargate.inbound.transparent_proxy 2>/dev/null || echo 0"))
   local transparent_mode = trim(sys.exec("uci -q get stargate.inbound.transparent_mode 2>/dev/null || echo redirect"))
+  local firewall_status = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-status 2>/dev/null"))
   local connect_url = dispatcher.build_url("admin", "services", "stargate", "connect_status")
+  local base_url = dispatcher.build_url("admin", "services", "stargate", "overview")
   local touch_check = ui_text("Touch Check", "点击检测")
   local checking = ui_text("Check...", "检测中...")
   local problem = ui_text("Problem detected!", "检测异常")
@@ -97,6 +107,11 @@ function dash.cfgvalue()
     '.stargate-probe:hover{border-color:#999;background:rgba(127,127,127,.12)}',
     '.stargate-probe-value{display:block;font-size:18px;font-weight:700;margin-top:5px;line-height:1.2}',
     '.stargate-alert{max-width:880px;margin:0 auto 14px;padding:11px 13px;border:1px solid rgba(251,99,64,.55);border-radius:6px;color:#fb6340;background:rgba(251,99,64,.08)}',
+    '.stargate-firewall{max-width:880px;margin:12px auto 14px;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05);display:grid;grid-template-columns:1fr auto;gap:12px;align-items:center}',
+    '.stargate-firewall-title{font-weight:700;margin-bottom:6px}',
+    '.stargate-firewall-status{font-size:12px;line-height:1.5;white-space:pre-wrap;opacity:.78}',
+    '.stargate-firewall-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}',
+    '.stargate-result{max-width:880px;margin:0 auto 12px;padding:10px 12px;border-radius:6px;background:rgba(46,160,67,.14);color:#8bd48b;white-space:pre-wrap}',
     '#cbi-stargate-global-enabled,#cbi-stargate-inbound-transparent_proxy{max-width:880px;margin:12px auto;padding:14px;border:1px solid rgba(140,140,140,.42);border-radius:6px;background:rgba(127,127,127,.05);display:grid;grid-template-columns:minmax(180px,260px) 1fr;gap:12px;align-items:center}',
     '#cbi-stargate-global-enabled .cbi-value-title,#cbi-stargate-inbound-transparent_proxy .cbi-value-title{font-weight:700}',
     '#cbi-stargate-global-enabled .cbi-value-description,#cbi-stargate-inbound-transparent_proxy .cbi-value-description{display:block;margin-top:5px;font-size:11px;line-height:1.45;opacity:.72}',
@@ -112,6 +127,7 @@ function dash.cfgvalue()
     '</style>',
     '<div class="stargate-wrap">',
     (node_ready and "" or '<div class="stargate-alert">' .. ui_text("No active node is configured. Add a node on the Node page and choose Use this node before enabling or starting Stargate.", "还没有配置当前节点。请先到节点页添加节点，并点击“使用此节点”，之后才能启用或启动 Stargate。") .. '</div>'),
+    (action_message and action_message ~= "" and '<div class="stargate-result">' .. util.pcdata(action_message) .. '</div>' or ""),
     '<div class="stargate-dashboard">',
     card(ui_text("Runtime", "运行状态"), node_ready and running or ui_text("not ready", "未就绪"), node_ready and (((transparent_enabled == "1" and (ui_text("transparent", "透明代理") .. " " .. transparent_mode)) or ui_text("local proxy", "本机代理")) .. " / " .. enabled) or ui_text("active node required", "需要当前节点"), nil, "S"),
     card("sing-box", version ~= "" and version or translate("not detected"), singbox_bin, nil, "SB"),
@@ -122,6 +138,13 @@ function dash.cfgvalue()
     probe_card("baidu", ui_text("Baidu Connection", "百度连接"), "B"),
     probe_card("google", ui_text("Google Connection", "谷歌连接"), "G"),
     probe_card("github", ui_text("GitHub Connection", "GitHub 连接"), "GH"),
+    '</div>',
+    '<div class="stargate-firewall">',
+    '<div><div class="stargate-firewall-title">' .. ui_text("Firewall tool", "防火墙工具") .. '</div><div class="stargate-firewall-status">' .. util.pcdata(firewall_status) .. '</div></div>',
+    '<div class="stargate-firewall-actions">',
+    '<a class="cbi-button cbi-button-apply" href="' .. base_url .. '?stargate_firewall_action=apply-firewall">' .. ui_text("Apply rules", "应用规则") .. '</a>',
+    '<a class="cbi-button" href="' .. base_url .. '?stargate_firewall_action=clean-firewall">' .. ui_text("Clean rules", "清理规则") .. '</a>',
+    '</div>',
     '</div>',
     '</div>',
     '<script type="text/javascript">',
@@ -145,7 +168,7 @@ mode_section = m:section(NamedSection, "inbound", "inbound", ui_text("Transparen
 mode_section.anonymous = true
 
 transparent_proxy = mode_section:option(Flag, "transparent_proxy", ui_text("Transparent proxy", "透明代理"))
-transparent_proxy.description = ui_text("Optional transparent inbound. It can only be selected after Local proxy is selected; Stargate still does not write firewall or DNS takeover rules by itself.", "可选透明入站。需要先勾选本机代理；Stargate 仍不会自动写入防火墙或 DNS 接管规则。")
+transparent_proxy.description = ui_text("Optional transparent inbound. Enable local proxy first, then use the firewall tool to route managed devices through it.", "可选透明入站。需要先勾选本机代理；之后用防火墙工具让受管设备走透明代理。")
 transparent_proxy.default = "0"
 transparent_proxy.rmempty = false
 

@@ -12,7 +12,7 @@ return view.extend({
     var mode = s.option(form.ListValue, 'mode', _('Mode'));
     mode.value('tcp_doh', _('TCP direct + DoH remote'));
     mode.default = 'tcp_doh';
-    mode.description = _('Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node. Stargate only writes sing-box internal DNS and does not take over dnsmasq.');
+    mode.description = _('Recommended: direct domains use domestic TCP DNS; domains matched by proxy rules use remote DoH through the selected node.');
 
     var strategy = s.option(form.ListValue, 'strategy', _('Strategy'));
     strategy.value('prefer_ipv4', 'prefer_ipv4');
@@ -77,9 +77,15 @@ return view.extend({
     final.default = 'direct-dns';
     final.description = _('Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.');
 
-    var hijack = s.option(form.Flag, 'hijack_dns', _('DNS hijack'));
-    hijack.default = '0';
+    var hijack = s.option(form.Flag, 'hijack_dns', _('DNS redirect'));
+    hijack.description = _('Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied.');
+    hijack.default = '1';
     hijack.rmempty = false;
+
+    var hijackPort = s.option(form.Value, 'hijack_port', _('DNS redirect port'));
+    hijackPort.default = '1053';
+    hijackPort.datatype = 'port';
+    hijackPort.depends('hijack_dns', '1');
 
     return m.render();
   }
