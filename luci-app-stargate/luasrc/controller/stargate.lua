@@ -36,6 +36,10 @@ function index()
   local singbox = entry({"admin", "services", "stargate", "singbox_upgrade"}, call("singbox_upgrade"))
   singbox.leaf = true
   singbox.acl_depends = { "luci-app-stargate" }
+
+  local rules = entry({"admin", "services", "stargate", "rules_test"}, call("rules_test"))
+  rules.leaf = true
+  rules.acl_depends = { "luci-app-stargate" }
 end
 
 local function shellquote(value)
@@ -123,6 +127,25 @@ function connect_status()
 
   http.prepare_content("application/json")
   http.write(jsonc.stringify(result))
+end
+
+function rules_test()
+  local http = require "luci.http"
+  local jsonc = require "luci.jsonc"
+  local sys = require "luci.sys"
+  local util = require "luci.util"
+
+  local target = http.formvalue("target") or ""
+  local cmd = "/usr/share/stargate/stargate.sh rules-test " .. shellquote(target) .. " 2>&1; printf '\\n__rc=%s' $?"
+  local output = sys.exec(cmd)
+  local rc = tonumber(output:match("__rc=(%d+)%s*$")) or 1
+  output = output:gsub("\n?__rc=%d+%s*$", "")
+
+  http.prepare_content("application/json")
+  http.write(jsonc.stringify({
+    ok = (rc == 0),
+    output = util.trim(output)
+  }))
 end
 
 function backup_download()

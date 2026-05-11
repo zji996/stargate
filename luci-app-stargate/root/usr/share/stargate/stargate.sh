@@ -483,7 +483,7 @@ rules_status() {
     update_state="$saved_state"
   fi
   if [ -s "$rules_update_log_file" ]; then
-    update_last="$(awk 'NF { line = $0 } END { print line }' "$rules_update_log_file" 2>/dev/null || true)"
+    update_last="$(awk '/^(Started|Finished) at / { line = $0 } END { print line }' "$rules_update_log_file" 2>/dev/null || true)"
   fi
   [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
   [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
@@ -500,11 +500,18 @@ normalize_rule_target() {
     {
       v = trim($0)
       sub(/^[A-Za-z][A-Za-z0-9+.-]*:\/\//, "", v)
-      sub(/^[^@/]+@/, "", v)
-      sub(/[/?#].*$/, "", v)
-      if (v ~ /^\[[^]]+\](:[0-9]+)?$/) {
-        sub(/^\[/, "", v)
-        sub(/\](:[0-9]+)?$/, "", v)
+      if (index(v, "@") > 0) sub(/^.*@/, "", v)
+      cut_pos = 0
+      slash_pos = index(v, "/")
+      query_pos = index(v, "?")
+      hash_pos = index(v, "#")
+      if (slash_pos > 0) cut_pos = slash_pos
+      if (query_pos > 0 && (cut_pos == 0 || query_pos < cut_pos)) cut_pos = query_pos
+      if (hash_pos > 0 && (cut_pos == 0 || hash_pos < cut_pos)) cut_pos = hash_pos
+      if (cut_pos > 0) v = substr(v, 1, cut_pos - 1)
+      if (substr(v, 1, 1) == "[") {
+        close_pos = index(v, "]")
+        if (close_pos > 1) v = substr(v, 2, close_pos - 2)
       } else if (v !~ /:.*:/) {
         sub(/:[0-9]+$/, "", v)
       }
@@ -580,46 +587,18 @@ rule_set_match() {
   file="$1"
   target="$2"
   [ -f "$file" ] || return 1
-  sed 's/"domain"/\
-"domain"/g; s/"domain_suffix"/\
-"domain_suffix"/g; s/"domain_keyword"/\
-"domain_keyword"/g' "$file" | awk -v target="$target" '
-    function suffix_match(domain, suffix) {
-      return domain == suffix || (length(domain) > length(suffix) && substr(domain, length(domain) - length(suffix), 1) == "." && substr(domain, length(domain) - length(suffix) + 1) == suffix)
-    }
-    function emit(kind, value) {
-      printf "%s:%s\n", kind, value
-      found = 1
-      exit
-    }
-    function check_value(value) {
-      value = tolower(value)
-      if (section == "domain" && target == value) emit("domain", value)
-      if (section == "domain_suffix" && suffix_match(target, value)) emit("domain_suffix", value)
-      if (section == "domain_keyword" && index(target, value) > 0) emit("domain_keyword", value)
-    }
-    {
-      line = $0
-      if (line ~ /"domain": *\[/) {
-        section = "domain"
-        sub(/^.*"domain": *\[/, "", line)
-      } else if (line ~ /"domain_suffix": *\[/) {
-        section = "domain_suffix"
-        sub(/^.*"domain_suffix": *\[/, "", line)
-      } else if (line ~ /"domain_keyword": *\[/) {
-        section = "domain_keyword"
-        sub(/^.*"domain_keyword": *\[/, "", line)
-      }
-      while (section != "" && match(line, /"([^"\\]|\\.)*"/)) {
-        value = substr(line, RSTART + 1, RLENGTH - 2)
-        gsub(/\\"/, "\"", value)
-        check_value(value)
-        line = substr(line, RSTART + RLENGTH)
-      }
-      if (line ~ /\]/) section = ""
-    }
-    END { exit found ? 0 : 1 }
-  '
+  candidate="$target"
+  while [ -n "$candidate" ]; do
+    if grep -Fq "\"$candidate\"" "$file"; then
+      printf 'domain_suffix:%s\n' "$candidate"
+      return 0
+    fi
+    case "$candidate" in
+      *.*) candidate="${candidate#*.}" ;;
+      *) break ;;
+    esac
+  done
+  return 1
 }
 
 rules_test() {
@@ -828,9 +807,11 @@ rules_update_start() {
   (
     trap '' HUP
     if "$0" rules-update >>"$rules_update_log_file" 2>&1; then
+      printf 'Finished at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$rules_update_log_file"
       printf 'success\n' >"$rules_update_status_file"
     else
       code="$?"
+      printf 'Finished at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$rules_update_log_file"
       printf 'failed (%s)\n' "$code" >"$rules_update_status_file"
     fi
     rm -f "$rules_update_pid_file"

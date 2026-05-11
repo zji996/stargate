@@ -44,8 +44,7 @@ local function rule_status_html(message)
   return table.concat(parts, "\n")
 end
 
-local function rule_test_html(output)
-  local rows = parse_status_rows(output)
+local function rule_rows_html(rows)
   local parts = {}
   if #rows == 0 then
     return ""
@@ -54,6 +53,10 @@ local function rule_test_html(output)
     parts[#parts + 1] = '<div class="stargate-rule-status-row"><span>' .. util.pcdata(row[1]) .. '</span><strong>' .. util.pcdata(row[2]) .. '</strong></div>'
   end
   return '<div class="stargate-rule-test-result">' .. table.concat(parts, "\n") .. '</div>'
+end
+
+local function rule_test_html(output)
+  return rule_rows_html(parse_status_rows(output))
 end
 
 m = Map("stargate", translate("Rules"))
@@ -143,10 +146,18 @@ function actions.cfgvalue()
     '<div class="stargate-rule-status">' .. rule_status_html(message) .. '</div>',
     '<div class="stargate-rule-test">',
     '<input id="stargate-rules-target" class="cbi-input-text" type="text" value="' .. util.pcdata(test_target) .. '" placeholder="' .. ui_text("Domain or IP", "域名或 IP") .. '" />',
-    '<input class="cbi-button" type="button" value="' .. ui_text("Test policy", "测试策略") .. '" onclick="var v=document.getElementById(\'stargate-rules-target\').value; if(v){location.href=\'' .. base .. '?stargate_rules_action=test&amp;stargate_rules_target=\'+encodeURIComponent(v)}" />',
+    '<input class="cbi-button" type="button" value="' .. ui_text("Test policy", "测试策略") .. '" onclick="stargateRulesTestPolicy()" />',
     rule_test_html(test_output),
     '</div>',
-    '</div>'
+    '</div>',
+    '<script type="text/javascript">',
+    '//<![CDATA[',
+    'function stargateRulesHtml(s){return String(s||"").replace(/[&<>"\']/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;","\'":"&#39;"}[c];});}',
+    'function stargateRulesRows(text){var html="";String(text||"").split(/\\r?\\n/).forEach(function(line){var m=line.match(/^([^:]+):\\s*(.*)$/);if(m){html+="<div class=\\"stargate-rule-status-row\\"><span>"+stargateRulesHtml(m[1])+"</span><strong>"+stargateRulesHtml(m[2])+"</strong></div>";}});return html||"<div class=\\"stargate-rule-status-row\\"><span>' .. ui_text("Result", "结果") .. '</span><strong>' .. ui_text("No result", "无结果") .. '</strong></div>";}',
+    'function stargateRulesSetResult(text){var box=document.querySelector(".stargate-rule-test");if(!box)return;var old=box.querySelector(".stargate-rule-test-result");if(old)old.parentNode.removeChild(old);var node=document.createElement("div");node.className="stargate-rule-test-result";node.innerHTML=stargateRulesRows(text);box.appendChild(node);}',
+    'function stargateRulesTestPolicy(){var input=document.getElementById("stargate-rules-target");var v=input?input.value.replace(/^\\s+|\\s+$/g,""):"";if(!v){alert("' .. ui_text("Domain or IP is required.", "请输入域名或 IP。") .. '");return;}XHR.get("' .. dispatcher.build_url("admin", "services", "stargate", "rules_test") .. '",{target:v},function(x,rv){if(rv&&rv.output){stargateRulesSetResult(rv.output);}else{stargateRulesSetResult("Result: "+(rv&&rv.ok?"OK":"Failed"));}});}',
+    '//]]>',
+    '</script>'
   }, "\n")
 end
 private_direct = s:option(Flag, "private_direct", translate("Private IP direct"))
