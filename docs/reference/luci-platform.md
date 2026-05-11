@@ -166,18 +166,19 @@ LuCI 页面不再要求用户手工拼协议、服务器和 DoH path。直连 DN
 
 ## 规则分流设计
 
-第一版使用 sing-box `rule_set`，规则来源改为 `Loyalsoldier/v2ray-rules-dat` 的 release 文本列表：
+第一版使用 sing-box `rule_set`，规则来源改为 `Loyalsoldier/clash-rules` 的 release 文本列表：
 
-- 上游直连列表：`direct-list.txt`，转换为 `/usr/share/stargate/rules/direct.json`
-- 上游代理列表：`proxy-list.txt`，转换为 `/usr/share/stargate/rules/proxy.json`
-- 格式：`source`
+- 上游直连列表：`direct.txt`、`private.txt`、`cncidr.txt`、`lancidr.txt`，合成为 `/usr/share/stargate/rules/direct.json` 并编译为 `direct.srs`
+- 上游代理列表：`proxy.txt`、`gfw.txt`、`tld-not-cn.txt`、`telegramcidr.txt`，合成为 `/usr/share/stargate/rules/proxy.json` 并编译为 `proxy.srs`
+- 运行时格式：`binary`
 - 用户自定义直连域名：生成优先 route rule，出站为 `direct`
 - 用户自定义代理域名：生成优先 route rule，出站为 `anytls-out`
+- 用户自定义直连/代理 IP：作为少量例外覆盖；基础 CIDR 规则已经覆盖常见直连与 Telegram 等代理 IP 段
 - 匹配顺序：私有 IP 直连、用户直连、用户代理、上游直连、上游代理
 - 黑名单模式：未命中默认 `direct`
 - 白名单模式：未命中默认 `anytls-out`
 
-Stargate 不再内置离线 fallback 规则文件。Rules 页提供显式“更新 Loyalsoldier 规则”入口，后端下载文本列表并转换为 sing-box `source` rule-set。生成配置时如果规则文件缺失会直接失败并提示先更新规则，避免悄悄使用旧规则或空规则。
+Stargate 不再内置离线 fallback 规则文件。Rules 页提供显式“更新 Loyalsoldier 规则”入口，后端下载文本列表并转换、编译为 sing-box binary rule-set。生成配置时如果规则文件缺失会直接失败并提示先更新规则，避免悄悄使用旧规则或空规则。
 
 Rules 页刻意不暴露默认出站和代理出站这类实现细节。用户只选择黑名单或白名单模式：黑名单表示默认直连、代理列表命中走节点；白名单表示默认走节点、直连列表命中直连。自定义域名入口保持简单：每行一个域名，分别放入“用户直连域名”和“用户代理域名”。这吸收 PassWall2 允许用户覆盖分流的经验，但不引入设备 ACL、端口矩阵、复杂 DNS hosts 等第一版暂不需要的配置面。
 

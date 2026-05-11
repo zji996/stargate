@@ -36,7 +36,7 @@ return view.extend({
 
   render: function(status) {
     var m = new form.Map('stargate', _('Rules'));
-    m.description = _('Use Loyalsoldier as the base rule source. Pick a blacklist or whitelist routing mode, then add only the few domains you want to override.');
+    m.description = _('Use Loyalsoldier clash-rules as the base rule source. Domain and IP CIDR rules are generated together; user overrides are only for exceptions.');
 
     var s = m.section(form.NamedSection, 'rules', 'rules', _('Rule policy'));
     s.anonymous = true;
@@ -50,13 +50,13 @@ return view.extend({
     mode.description = _('Blacklist: default direct, listed proxy domains use the node. Whitelist: default proxy, listed direct domains go direct.');
 
     var source = s.option(form.ListValue, 'source', _('Rule source'));
-    source.value('loyalsoldier', 'Loyalsoldier/v2ray-rules-dat');
+    source.value('loyalsoldier', 'Loyalsoldier/clash-rules');
     source.default = 'loyalsoldier';
     source.depends('mode', 'blacklist');
     source.depends('mode', 'whitelist');
 
     var sourceBase = s.option(form.Value, 'source_base_url', _('Source base URL'));
-    sourceBase.default = 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release';
+    sourceBase.default = 'https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release';
     sourceBase.depends('mode', 'blacklist');
     sourceBase.depends('mode', 'whitelist');
 
@@ -87,14 +87,14 @@ return view.extend({
     var directIps = s.option(form.TextValue, 'custom_direct_ips', _('User direct IP/CIDR'));
     directIps.rows = 4;
     directIps.wrap = 'off';
-    directIps.description = _('One IPv4 or CIDR per line. These IP ranges always go direct.');
+    directIps.description = _('Optional. Base GeoIP-style CIDR rules already cover common direct IP ranges; add only exceptions.');
     directIps.depends('mode', 'blacklist');
     directIps.depends('mode', 'whitelist');
 
     var proxyIps = s.option(form.TextValue, 'custom_proxy_ips', _('User proxy IP/CIDR'));
     proxyIps.rows = 4;
     proxyIps.wrap = 'off';
-    proxyIps.description = _('One IPv4 or CIDR per line. Use this for services that connect by IP and should not go direct.');
+    proxyIps.description = _('Optional. Base CIDR rules already cover common proxy IP ranges such as Telegram; add only exceptions.');
     proxyIps.depends('mode', 'blacklist');
     proxyIps.depends('mode', 'whitelist');
 

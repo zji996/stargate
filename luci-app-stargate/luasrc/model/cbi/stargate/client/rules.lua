@@ -40,7 +40,7 @@ local function depends_rule_mode(option)
 end
 
 m = Map("stargate", translate("Rules"))
-m.description = ui_text("Use Loyalsoldier as the base rule source. Pick a blacklist or whitelist routing mode, then add only the few domains you want to override.", "以 Loyalsoldier 作为基础规则源。选择黑名单或白名单模式，只额外填写少量需要覆盖的域名。")
+m.description = ui_text("Use Loyalsoldier clash-rules as the base rule source. Domain and IP CIDR rules are generated together; user overrides are only for exceptions.", "以 Loyalsoldier clash-rules 作为基础规则源，同时生成域名和 IP CIDR 规则；用户规则只用于少量例外覆盖。")
 
 local message = nil
 local test_output = nil
@@ -67,12 +67,12 @@ mode.default = "blacklist"
 mode.description = ui_text("Blacklist: default direct, listed proxy domains use the node. Whitelist: default proxy, listed direct domains go direct.", "黑名单：默认直连，代理列表域名走节点。白名单：默认代理，直连列表域名走直连。")
 
 source = s:option(ListValue, "source", translate("Rule source"))
-source:value("loyalsoldier", "Loyalsoldier/v2ray-rules-dat")
+source:value("loyalsoldier", "Loyalsoldier/clash-rules")
 source.default = "loyalsoldier"
 depends_rule_mode(source)
 
 source_base_url = s:option(Value, "source_base_url", translate("Source base URL"))
-source_base_url.default = "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release"
+source_base_url.default = "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release"
 depends_rule_mode(source_base_url)
 
 direct_rule_set = s:option(Value, "direct_rule_set", translate("Direct rule-set path"))
@@ -98,13 +98,13 @@ depends_rule_mode(custom_proxy_domains)
 custom_direct_ips = s:option(TextValue, "custom_direct_ips", translate("User direct IP/CIDR"))
 custom_direct_ips.rows = 4
 custom_direct_ips.wrap = "off"
-custom_direct_ips.description = ui_text("One IPv4 or CIDR per line. These IP ranges always go direct.", "每行一个 IPv4 或 CIDR。这些 IP 段始终直连。")
+custom_direct_ips.description = ui_text("Optional. Base GeoIP-style CIDR rules already cover common direct IP ranges; add only exceptions.", "可选。基础 CIDR 规则已覆盖常见直连 IP 段，只在有例外时填写。")
 depends_rule_mode(custom_direct_ips)
 
 custom_proxy_ips = s:option(TextValue, "custom_proxy_ips", translate("User proxy IP/CIDR"))
 custom_proxy_ips.rows = 4
 custom_proxy_ips.wrap = "off"
-custom_proxy_ips.description = ui_text("One IPv4 or CIDR per line. Use this for services that connect by IP and should not go direct.", "每行一个 IPv4 或 CIDR。适合直接连接 IP、但不应直连的服务。")
+custom_proxy_ips.description = ui_text("Optional. Base CIDR rules already cover common proxy IP ranges such as Telegram; add only exceptions.", "可选。基础 CIDR 规则已覆盖 Telegram 等常见代理 IP 段，只在有例外时填写。")
 depends_rule_mode(custom_proxy_ips)
 
 actions = s:option(DummyValue, "_rules_actions", translate("Rule actions"))

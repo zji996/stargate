@@ -102,17 +102,17 @@ LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直�
 
 ## 规则策略
 
-第一版规则来源使用 `Loyalsoldier/v2ray-rules-dat` 的 release 文本列表：
+第一版规则来源使用 `Loyalsoldier/clash-rules` 的 release 文本列表，并转换为 sing-box rule-set：
 
-- `direct-list.txt` 转换为 `/usr/share/stargate/rules/direct.json`。
-- `proxy-list.txt` 转换为 `/usr/share/stargate/rules/proxy.json`。
+- `direct.txt`、`private.txt`、`cncidr.txt`、`lancidr.txt` 合成为 `/usr/share/stargate/rules/direct.json`，再编译为运行时使用的 `direct.srs`。
+- `proxy.txt`、`gfw.txt`、`tld-not-cn.txt`、`telegramcidr.txt` 合成为 `/usr/share/stargate/rules/proxy.json`，再编译为运行时使用的 `proxy.srs`。
 - 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成优先级高于上游列表的 route rule。
 
 规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
 
 Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
 
-用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的服务：直连 IP/CIDR 会在 sing-box 路由中走 `direct`，并在透明代理防火墙链中先 `RETURN`，让明确直连的目标真正绕过透明代理；代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
+用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的少量例外：基础 `cncidr/lancidr/telegramcidr` 已覆盖常见直连和代理 IP 段，用户 IP/CIDR 默认可以留空。直连 IP/CIDR 会在 sing-box 路由中走 `direct`，并在透明代理防火墙链中先 `RETURN`，让明确直连的目标真正绕过透明代理；代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
 
 ## 路由器经验
 

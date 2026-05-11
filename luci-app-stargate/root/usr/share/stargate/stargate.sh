@@ -137,7 +137,7 @@ load_config() {
   rules_mode="$(uci_get rules mode blacklist)"
   rules_default_outbound="direct"
   rules_source="$(uci_get rules source loyalsoldier)"
-  rules_source_base_url="$(uci_get rules source_base_url https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release)"
+  rules_source_base_url="$(uci_get rules source_base_url https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release)"
   rules_direct_rule_set="$(uci_get rules direct_rule_set /usr/share/stargate/rules/direct.json)"
   rules_proxy_rule_set="$(uci_get rules proxy_rule_set /usr/share/stargate/rules/proxy.json)"
   rules_custom_direct_domains="$(uci_get rules custom_direct_domains '')"
@@ -174,6 +174,8 @@ validate_config() {
   case "$http_port" in ''|*[!0-9]*) echo "HTTP port must be numeric" >&2; exit 1 ;; esac
   case "$transparent_port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
+    direct_runtime_rule_set="$(rule_set_runtime_path "$rules_direct_rule_set")"
+    proxy_runtime_rule_set="$(rule_set_runtime_path "$rules_proxy_rule_set")"
     [ -f "$rules_direct_rule_set" ] || {
       echo "direct rule-set missing: run Rules -> Update base rules first ($rules_direct_rule_set)" >&2
       exit 1
@@ -182,7 +184,30 @@ validate_config() {
       echo "proxy rule-set missing: run Rules -> Update base rules first ($rules_proxy_rule_set)" >&2
       exit 1
     }
+    [ -f "$direct_runtime_rule_set" ] || {
+      echo "compiled direct rule-set missing: run Rules -> Update base rules first ($direct_runtime_rule_set)" >&2
+      exit 1
+    }
+    [ -f "$proxy_runtime_rule_set" ] || {
+      echo "compiled proxy rule-set missing: run Rules -> Update base rules first ($proxy_runtime_rule_set)" >&2
+      exit 1
+    }
   fi
+}
+
+rule_set_runtime_path() {
+  case "$1" in
+    *.json) printf '%s.srs' "${1%.json}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
+rule_set_runtime_format() {
+  case "$1" in
+    *.json) printf binary ;;
+    *.srs) printf binary ;;
+    *) printf source ;;
+  esac
 }
 
 apply_dns_presets() {
@@ -468,10 +493,42 @@ node_delete() {
   echo "node deleted: $id"
 }
 
+rule_count() {
+  file="$1"
+  key="$2"
+  [ -f "$file" ] || {
+    printf 'not updated'
+    return
+  }
+  awk -v key="\"$key\"" '
+    function count_values(line) {
+      while (match(line, /"[^"]+"/)) {
+        count++
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+    index($0, key) {
+      in_array = 1
+      sub(".*" key "[^[]*\\[", "")
+    }
+    in_array {
+      line = $0
+      if (line ~ /\]/) {
+        sub(/\].*/, "", line)
+        in_array = 0
+      }
+      count_values(line)
+    }
+    END { printf "%d", count }
+  ' "$file"
+}
+
 rules_status() {
   load_config
-  direct_count="not updated"
-  proxy_count="not updated"
+  direct_domains="not updated"
+  direct_ips="not updated"
+  proxy_domains="not updated"
+  proxy_ips="not updated"
   update_state="idle"
   update_last=""
   saved_state=""
@@ -489,13 +546,21 @@ rules_status() {
   if [ -s "$rules_update_log_file" ]; then
     update_last="$(awk '/^(Started|Finished) at / { line = $0 } END { print line }' "$rules_update_log_file" 2>/dev/null || true)"
   fi
-  [ -f "$rules_direct_rule_set" ] && direct_count="$(grep -o '"' "$rules_direct_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
-  [ -f "$rules_proxy_rule_set" ] && proxy_count="$(grep -o '"' "$rules_proxy_rule_set" 2>/dev/null | wc -l | awk '{print int($1 / 2)}') domains"
-  printf 'Rule source: Loyalsoldier/v2ray-rules-dat\n'
+  if [ -f "$rules_direct_rule_set" ]; then
+    direct_domains="$(rule_count "$rules_direct_rule_set" domain_suffix) domains"
+    direct_ips="$(rule_count "$rules_direct_rule_set" ip_cidr) CIDRs"
+  fi
+  if [ -f "$rules_proxy_rule_set" ]; then
+    proxy_domains="$(rule_count "$rules_proxy_rule_set" domain_suffix) domains"
+    proxy_ips="$(rule_count "$rules_proxy_rule_set" ip_cidr) CIDRs"
+  fi
+  printf 'Rule source: Loyalsoldier/clash-rules\n'
   printf 'Rule update: %s\n' "$update_state"
   [ -z "$update_last" ] || printf 'Last update: %s\n' "$update_last"
-  printf 'Direct list: %s\n' "$direct_count"
-  printf 'Proxy list: %s\n' "$proxy_count"
+  printf 'Direct domains: %s\n' "$direct_domains"
+  printf 'Direct IPs: %s\n' "$direct_ips"
+  printf 'Proxy domains: %s\n' "$proxy_domains"
+  printf 'Proxy IPs: %s\n' "$proxy_ips"
 }
 
 normalize_rule_target() {
@@ -667,7 +732,7 @@ write_inline_ip_rule() {
   printf '{ "ip_cidr": [%s], "outbound": "%s" }' "$cidrs" "$outbound"
 }
 
-rule_set_match() {
+rule_set_domain_match() {
   file="$1"
   target="$2"
   [ -f "$file" ] || return 1
@@ -683,6 +748,32 @@ rule_set_match() {
     esac
   done
   return 1
+}
+
+rule_set_ip_match() {
+  file="$1"
+  target="$2"
+  [ -f "$file" ] || return 1
+  is_ipv4 "$target" || return 1
+  cidrs="$(awk '
+    /"ip_cidr"[[:space:]]*:/ {
+      in_array = 1
+      sub(/.*"ip_cidr"[[:space:]]*:[[:space:]]*\[/, "")
+    }
+    in_array {
+      line = $0
+      if (line ~ /\]/) {
+        sub(/\].*/, "", line)
+        in_array = 0
+      }
+      while (match(line, /"[^"]+"/)) {
+        value = substr(line, RSTART + 1, RLENGTH - 2)
+        print value
+        line = substr(line, RSTART + RLENGTH)
+      }
+    }
+  ' "$file")"
+  custom_ip_match "$cidrs" "$target"
 }
 
 rules_test() {
@@ -713,6 +804,20 @@ rules_test() {
       printf 'Decision: Proxy\n'
       printf 'Outbound: anytls-out\n'
       printf 'Reason: user proxy IP (%s)\n' "$match"
+      return 0
+    fi
+    match="$(rule_set_ip_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Direct\n'
+      printf 'Outbound: direct\n'
+      printf 'Reason: direct rule-set IP (%s)\n' "$match"
+      return 0
+    fi
+    match="$(rule_set_ip_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Proxy\n'
+      printf 'Outbound: anytls-out\n'
+      printf 'Reason: proxy rule-set IP (%s)\n' "$match"
       return 0
     fi
     case "$rules_mode" in
@@ -766,7 +871,7 @@ rules_test() {
     return 0
   fi
 
-  match="$(rule_set_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+  match="$(rule_set_domain_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
   if [ -n "$match" ]; then
     printf 'Decision: Direct\n'
     printf 'Outbound: direct\n'
@@ -774,7 +879,7 @@ rules_test() {
     return 0
   fi
 
-  match="$(rule_set_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
+  match="$(rule_set_domain_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
   if [ -n "$match" ]; then
     printf 'Decision: Proxy\n'
     printf 'Outbound: anytls-out\n'
@@ -793,57 +898,87 @@ rules_test() {
   fi
 }
 
-json_array_from_list() {
+json_arrays_from_clash_payloads() {
   key="$1"
-  file="$2"
+  shift
   awk -v key="$key" '
     function trim(s) { sub(/^[ \t\r\n]+/, "", s); sub(/[ \t\r\n]+$/, "", s); return s }
+    function strip_value(s) {
+      s = trim(s)
+      sub(/^- /, "", s)
+      s = trim(s)
+      sub(/^'\''/, "", s)
+      sub(/'\''$/, "", s)
+      sub(/^"/, "", s)
+      sub(/"$/, "", s)
+      return s
+    }
     function emit(v) {
       gsub(/\\/,"\\\\",v)
       gsub(/"/,"\\\"",v)
-      if (count > 0) printf ","
-      printf "\"%s\"", v
+      if (seen[v]) return
+      seen[v] = 1
+      if (count > 0) printf ",\n"
+      printf "        \"%s\"", v
       count++
     }
     {
       line = trim($0)
       if (line == "" || line ~ /^#/) next
-      if (line ~ /^regexp:/) next
-      if (line ~ /^full:/) {
-        if (key == "domain") emit(substr(line, 6))
-        next
+      if (line !~ /^- /) next
+      value = strip_value(line)
+      if (value == "" || value ~ /^PROCESS-NAME,/) next
+      if (value ~ /^DOMAIN,/) value = substr(value, 8)
+      else if (value ~ /^DOMAIN-SUFFIX,/) value = substr(value, 15)
+      else if (value ~ /^DOMAIN-KEYWORD,/) value = substr(value, 16)
+      else if (value ~ /^IP-CIDR,/) value = substr(value, 9)
+      else if (value ~ /^IP-CIDR6,/) value = substr(value, 10)
+      sub(/,no-resolve$/, "", value)
+      if (key == "domain_suffix") {
+        sub(/^\+\./, "", value)
+        if (value ~ /^[A-Za-z0-9_.-]+$/) emit(value)
+      } else if (key == "domain") {
+        if (value ~ /^[A-Za-z0-9_.-]+$/ && value !~ /^\+\./) emit(value)
+      } else if (key == "domain_keyword") {
+        if (value ~ /^[A-Za-z0-9_.-]+$/) emit(value)
+      } else if (key == "ip_cidr") {
+        if (value ~ /^[0-9A-Fa-f:.]+\/[0-9]+$/) emit(value)
       }
-      if (line ~ /^domain:/) {
-        if (key == "domain_suffix") emit(substr(line, 8))
-        next
-      }
-      if (line ~ /^keyword:/) {
-        if (key == "domain_keyword") emit(substr(line, 9))
-        next
-      }
-      if (line !~ /^[A-Za-z0-9_.-]+$/) next
-      if (key == "domain_suffix") emit(line)
     }
-  ' "$file"
+  ' "$@"
 }
 
 write_rule_set_json() {
-  input="$1"
-  output="$2"
+  domain_inputs="$1"
+  ip_inputs="$2"
+  output="$3"
   tmp="$output.tmp"
   mkdir -p "$(dirname "$output")"
   {
     printf '{\n  "version": 3,\n  "rules": [\n'
-    printf '    {\n      "domain": ['
-    json_array_from_list domain "$input"
-    printf '],\n      "domain_suffix": ['
-    json_array_from_list domain_suffix "$input"
-    printf '],\n      "domain_keyword": ['
-    json_array_from_list domain_keyword "$input"
-    printf ']\n    }\n'
+    printf '    {\n      "domain_suffix": [\n'
+    # shellcheck disable=SC2086
+    json_arrays_from_clash_payloads domain_suffix $domain_inputs
+    printf '\n      ],\n      "domain_keyword": [\n'
+    # shellcheck disable=SC2086
+    json_arrays_from_clash_payloads domain_keyword $domain_inputs
+    printf '\n      ],\n      "ip_cidr": [\n'
+    # shellcheck disable=SC2086
+    json_arrays_from_clash_payloads ip_cidr $ip_inputs
+    printf '\n      ]\n    }\n'
     printf '  ]\n}\n'
   } >"$tmp"
   mv "$tmp" "$output"
+}
+
+compile_rule_set() {
+  source="$1"
+  output="$(rule_set_runtime_path "$source")"
+  command -v "$singbox_bin" >/dev/null 2>&1 || {
+    echo "sing-box is required to compile rule-set: $singbox_bin" >&2
+    exit 1
+  }
+  "$singbox_bin" rule-set compile "$source" -o "$output" >/dev/null
 }
 
 fetch_rule_list() {
@@ -875,12 +1010,14 @@ rules_update() {
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
   base="${rules_source_base_url%/}"
-  fetch_rule_list "$base/direct-list.txt" "$tmp_dir/direct-list.txt"
-  fetch_rule_list "$base/proxy-list.txt" "$tmp_dir/proxy-list.txt"
-  [ -s "$tmp_dir/direct-list.txt" ] || { echo "downloaded direct list is empty" >&2; exit 1; }
-  [ -s "$tmp_dir/proxy-list.txt" ] || { echo "downloaded proxy list is empty" >&2; exit 1; }
-  write_rule_set_json "$tmp_dir/direct-list.txt" "$rules_direct_rule_set"
-  write_rule_set_json "$tmp_dir/proxy-list.txt" "$rules_proxy_rule_set"
+  for name in direct private proxy gfw tld-not-cn cncidr telegramcidr lancidr; do
+    fetch_rule_list "$base/$name.txt" "$tmp_dir/$name.txt"
+    [ -s "$tmp_dir/$name.txt" ] || { echo "downloaded $name list is empty" >&2; exit 1; }
+  done
+  write_rule_set_json "$tmp_dir/direct.txt $tmp_dir/private.txt" "$tmp_dir/cncidr.txt $tmp_dir/lancidr.txt" "$rules_direct_rule_set"
+  write_rule_set_json "$tmp_dir/proxy.txt $tmp_dir/gfw.txt $tmp_dir/tld-not-cn.txt" "$tmp_dir/telegramcidr.txt" "$rules_proxy_rule_set"
+  compile_rule_set "$rules_direct_rule_set"
+  compile_rule_set "$rules_proxy_rule_set"
   echo "Rules updated."
   rules_status
 }
@@ -1019,14 +1156,14 @@ write_rule_sets() {
     printf '      {\n'
     printf '        "type": "local",\n'
     printf '        "tag": "direct",\n'
-    printf '        "format": "source",\n'
-    printf '        "path": "%s"\n' "$esc_direct_rule_set"
+    printf '        "format": "%s",\n' "$direct_rule_set_format"
+    printf '        "path": "%s"\n' "$esc_direct_runtime_rule_set"
     printf '      },\n'
     printf '      {\n'
     printf '        "type": "local",\n'
     printf '        "tag": "proxy",\n'
-    printf '        "format": "source",\n'
-    printf '        "path": "%s"\n' "$esc_proxy_rule_set"
+    printf '        "format": "%s",\n' "$proxy_rule_set_format"
+    printf '        "path": "%s"\n' "$esc_proxy_runtime_rule_set"
     printf '      }\n'
   fi
 }
@@ -1089,8 +1226,12 @@ generate_config() {
   esc_socks_listen="$(printf '%s' "$socks_listen" | json_escape)"
   esc_http_listen="$(printf '%s' "$http_listen" | json_escape)"
   esc_transparent_listen="$(printf '%s' "$transparent_listen" | json_escape)"
-  esc_direct_rule_set="$(printf '%s' "$rules_direct_rule_set" | json_escape)"
-  esc_proxy_rule_set="$(printf '%s' "$rules_proxy_rule_set" | json_escape)"
+  direct_runtime_rule_set="$(rule_set_runtime_path "$rules_direct_rule_set")"
+  proxy_runtime_rule_set="$(rule_set_runtime_path "$rules_proxy_rule_set")"
+  direct_rule_set_format="$(rule_set_runtime_format "$rules_direct_rule_set")"
+  proxy_rule_set_format="$(rule_set_runtime_format "$rules_proxy_rule_set")"
+  esc_direct_runtime_rule_set="$(printf '%s' "$direct_runtime_rule_set" | json_escape)"
+  esc_proxy_runtime_rule_set="$(printf '%s' "$proxy_runtime_rule_set" | json_escape)"
   tls_server_name=""
   if [ -n "$node_sni" ]; then
     tls_server_name=", \"server_name\": \"$esc_sni\""
@@ -1170,6 +1311,7 @@ check_next() {
 }
 
 apply_config() {
+  load_config
   generated="$(generate_config)"
   next_file="$generated"
   check_next
@@ -1659,6 +1801,10 @@ backup_create() {
     if [ -f "$file" ]; then
       cp -a "$file" "$tmp_dir/usr/share/stargate/rules/$(basename "$file")"
     fi
+    runtime_file="$(rule_set_runtime_path "$file")"
+    if [ -f "$runtime_file" ]; then
+      cp -a "$runtime_file" "$tmp_dir/usr/share/stargate/rules/$(basename "$runtime_file")"
+    fi
   done
   {
     echo "name=stargate"
@@ -1749,7 +1895,7 @@ config dns 'dns'
 config rules 'rules'
 	option mode 'blacklist'
 	option source 'loyalsoldier'
-	option source_base_url 'https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release'
+	option source_base_url 'https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release'
 	option direct_rule_set '/usr/share/stargate/rules/direct.json'
 	option proxy_rule_set '/usr/share/stargate/rules/proxy.json'
 	option block_quic '0'
@@ -1814,7 +1960,7 @@ singbox_rollback() {
 action="${1:-}"
 case "$action" in
   generate) generate_config ;;
-  check) generated="$(generate_config)"; next_file="$generated"; check_next ;;
+  check) load_config; generated="$(generate_config)"; next_file="$generated"; check_next ;;
   apply) apply_config ;;
   rollback) rollback_config ;;
   start) start_local_proxy ;;
