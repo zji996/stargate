@@ -125,6 +125,7 @@ config rules 'rules'
 
 config safety 'safety'
 	option backup_on_apply '1'
+	option allow_proxy_conflict '0'
 EOF
   rm -f /etc/stargate/config.json.next
   uci_commit || true

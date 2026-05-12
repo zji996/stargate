@@ -102,6 +102,7 @@ load_config() {
   rules_private_direct="$(uci_get rules private_direct 1)"
   rules_block_quic="$(uci_get rules block_quic 1)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
+  allow_proxy_conflict="$(bool_value "$(uci_get safety allow_proxy_conflict 0)")"
 }
 
 validate_config() {

@@ -175,25 +175,25 @@ firewall_apply_nft() {
   direct_ip_set="$(firewall_direct_bypass_cidrs all | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
   direct_ip_return=""
   if [ -n "$direct_ip_set" ]; then
-    direct_ip_return="    iifname { $iface_set } ip daddr { $direct_ip_set } return"
+    direct_ip_return="    iifname { $iface_set } meta nfproto ipv4 ip daddr { $direct_ip_set } return"
   fi
   firewall_clean_nft
   tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
   cat >"$tmp_nft" <<EOF
 table inet stargate {
   chain prerouting {
-    type nat hook prerouting priority dstnat; policy accept;
-    iifname { $iface_set } udp dport 53 redirect to :$dns_hijack_port
-    iifname { $iface_set } tcp dport 53 redirect to :$dns_hijack_port
-    iifname { $iface_set } ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
+    type nat hook prerouting priority dstnat - 2; policy accept;
+    iifname { $iface_set } meta nfproto ipv4 udp dport 53 redirect to :$dns_hijack_port
+    iifname { $iface_set } meta nfproto ipv4 tcp dport 53 redirect to :$dns_hijack_port
+    iifname { $iface_set } meta nfproto ipv4 ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
 $direct_ip_return
-    iifname { $iface_set } tcp redirect to :$transparent_port
+    iifname { $iface_set } meta nfproto ipv4 meta l4proto tcp redirect to :$transparent_port
   }
   chain forward {
-    type filter hook forward priority filter; policy accept;
+    type filter hook forward priority filter - 2; policy accept;
     iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } return
     iifname { $iface_set } meta nfproto ipv6 reject
-    iifname { $iface_set } udp dport 443 reject
+    iifname { $iface_set } meta nfproto ipv4 udp dport 443 reject
   }
 }
 EOF
@@ -217,6 +217,44 @@ firewall_backend() {
   fi
 }
 
+firewall_conflicting_proxy() {
+  for svc in passwall2 passwall openclash; do
+    [ -x "/etc/init.d/$svc" ] || continue
+    if "/etc/init.d/$svc" enabled >/dev/null 2>&1; then
+      printf '%s enabled' "$svc"
+      return 0
+    fi
+  done
+  if [ "$(uci -q get passwall2.@global[0].enabled 2>/dev/null || true)" = "1" ]; then
+    printf 'passwall2 enabled'
+    return 0
+  fi
+  if [ "$(uci -q get passwall.@global[0].enabled 2>/dev/null || true)" = "1" ]; then
+    printf 'passwall enabled'
+    return 0
+  fi
+  if [ "$(uci -q get openclash.config.enable 2>/dev/null || true)" = "1" ]; then
+    printf 'openclash enabled'
+    return 0
+  fi
+  if ps w 2>/dev/null | grep -E '/tmp/etc/passwall2|/usr/share/passwall2|/tmp/etc/passwall|/usr/share/passwall|openclash|mihomo|clash' | grep -v grep >/dev/null; then
+    printf 'another proxy process running'
+    return 0
+  fi
+  return 1
+}
+
+firewall_proxy_conflict_allowed() {
+  [ "${STARGATE_ALLOW_PROXY_CONFLICT:-0}" = "1" ] || [ "${allow_proxy_conflict:-0}" = "1" ]
+}
+
+firewall_require_no_proxy_conflict() {
+  firewall_proxy_conflict_allowed && return 0
+  conflict="$(firewall_conflicting_proxy)" || return 0
+  echo "refusing to apply Stargate transparent forwarding: $conflict; stop the other proxy first or set safety.allow_proxy_conflict=1 deliberately" >&2
+  return 1
+}
+
 firewall_apply_rules() {
   load_config
   if [ "$transparent_proxy" != "1" ]; then
@@ -224,6 +262,7 @@ firewall_apply_rules() {
     echo "firewall cleaned; transparent proxy is disabled"
     return 0
   fi
+  firewall_require_no_proxy_conflict || return 1
   validate_config
   backend="$(firewall_backend)"
   case "$backend" in
@@ -241,6 +280,7 @@ firewall_apply() {
     echo "firewall cleaned; transparent proxy is disabled"
     return 0
   fi
+  firewall_require_no_proxy_conflict || return 1
   validate_config
   apply_config
   restart_service_with_rollback
@@ -277,6 +317,11 @@ firewall_status_text() {
   printf 'DNS redirect: %s:%s\n' "$dns_hijack" "$dns_hijack_port"
   printf 'QUIC block: %s\n' "$rules_block_quic"
   printf 'IPv6 guard: %s\n' "$ipv6_guard"
+  if conflict="$(firewall_conflicting_proxy)"; then
+    printf 'Proxy conflict: %s\n' "$conflict"
+  else
+    printf 'Proxy conflict: no\n'
+  fi
 }
 
 firewall_status_json() {
@@ -295,6 +340,11 @@ firewall_status_json() {
     ipv6_guard=true
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard"
-  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$message" | json_escape)"
+  if conflict="$(firewall_conflicting_proxy)"; then
+    proxy_conflict="$conflict"
+  else
+    proxy_conflict="no"
+  fi
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; Proxy conflict: $proxy_conflict"
+  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"proxy_conflict":"%s","message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$proxy_conflict" | json_escape)" "$(printf '%s' "$message" | json_escape)"
 }
