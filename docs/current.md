@@ -53,6 +53,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - Rules 页支持用户直连/代理 IP 或 CIDR。透明代理转发已应用且 iptables/ipset 可用时，Stargate 会把基础 direct rule-set 中的 IPv4 CIDR、常见内网段和用户直连 IP/CIDR 放进防火墙绕过集合，能在 IP 层确定直连的目标不会进入 sing-box；Google、Facebook、Twitter/X、Telegram 等裸 IP 由 GeoIP proxy `.srs` 在 sing-box 路由层判定走节点，当前内置补充 Twitter/X 上游漏掉的 `104.244.43.0/24`，不在前端暴露为常规选项；用户代理 IP/CIDR 只用于少量例外补充。
 - 阻断 QUIC 默认开启，在防火墙转发层拒绝受管 LAN 设备的 `UDP/443`，使浏览器或应用回退到 TCP/TLS。该选项只处理 `UDP/443`，不会影响其他 UDP 端口或把普通直连 IP 改成代理。
 - 透明代理防火墙规则参考 PassWall2 的链插入经验：Stargate 的 PREROUTING 和 FORWARD 入口必须插到链前部，避免被 fw3/fw4 或桥接场景中已有的 ACCEPT 规则提前放行。DNS 重定向规则必须排在通用 TCP 透明代理规则之前，否则 TCP/53 会被错误送入透明代理端口。当前 redirect 模式只处理 IPv4 TCP，公网 IPv6 通过独立 guard 阻断，避免未代理的 IPv6 直连泄漏。
+- `docs/reference/deployment-notes.md` 记录当前实机部署、分流验证、DNS、QUIC、防火墙和日志排障经验，便于换机器部署时按清单复核。
 
 ## 当前边界
 

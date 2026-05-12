@@ -39,7 +39,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - `examples/anytls.json`：结构化节点配置方向示例。
 - `docs/current.md`：当前协作上下文。
 - `docs/roadmap.md`：未来方向。
-- `docs/reference/`：当前真实架构和命名边界。
+- `docs/reference/`：当前真实架构、LuCI 平台、实机部署经验和命名边界。
 - `third_party/openwrt-passwall2`：PassWall2 参考仓库，只读参考。
 - `third_party/sing-box`：sing-box `dev-next` 参考仓库，只读参考。
 
