@@ -48,6 +48,7 @@ load_config() {
   backup_file="$config_file.bak"
   singbox_bin="$(uci_get global singbox_bin "$singbox_bin")"
 
+  auto_start="$(bool_value "$(uci_get global auto_start 0)")"
   log_level="$(uci_get global log_level warn)"
   socks_listen="$(uci_get inbound socks_listen 127.0.0.1)"
   socks_port="$(uci_get inbound socks_port 10808)"

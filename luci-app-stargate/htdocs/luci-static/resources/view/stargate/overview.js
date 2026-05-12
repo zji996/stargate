@@ -3,7 +3,6 @@
 'require form';
 'require fs';
 'require uci';
-'require ui';
 
 function parseStatus(text) {
   try {
@@ -23,26 +22,10 @@ return view.extend({
     ]);
   },
 
-  handleSaveApply: function(ev, mode) {
-    return this.handleSave(ev).then(function() {
-      return ui.changes.apply(mode == '0');
-    }).then(function() {
-      return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'apply-runtime' ])
-        .then(function(text) {
-          if (text)
-            ui.addNotification(null, E('pre', {}, text));
-        })
-        .catch(function(err) {
-          ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
-          throw err;
-        });
-    });
-  },
-
   render: function(data) {
     var status = data[1] || {};
     var m = new form.Map('stargate', _('Stargate'));
-    m.description = _('Runtime status, proxy mode, and local outlet checks.');
+    m.description = _('Runtime status, saved proxy mode, and local outlet checks. Saving this page does not start Stargate or apply forwarding rules.');
 
     var s = m.section(form.NamedSection, 'global', 'global', _('Overview'));
     s.anonymous = true;
@@ -97,7 +80,7 @@ return view.extend({
     };
 
     var local = s.option(form.Flag, 'enabled', _('Local proxy'));
-    local.description = _('Enable Stargate with local SOCKS/HTTP inbounds only. Use Save & Apply in the bottom-right corner to commit this choice.');
+    local.description = _('Save the desired local SOCKS/HTTP mode only. Runtime start and stop must be triggered explicitly.');
     local.default = '0';
     local.rmempty = false;
 

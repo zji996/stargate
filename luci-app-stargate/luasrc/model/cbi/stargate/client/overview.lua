@@ -8,14 +8,7 @@ local shellquote = common.shellquote
 local ui_text = common.ui_text
 
 m = Map("stargate", translate("Stargate"))
-m.description = translate("Runtime status, proxy mode, and local outlet checks.")
-
-function m.on_after_commit(self)
-  local output = sys.exec("/usr/share/stargate/stargate.sh apply-runtime 2>&1")
-  if trim(output) ~= "" then
-    self.message = "<pre>" .. util.pcdata(output) .. "</pre>"
-  end
-end
+m.description = ui_text("Runtime status, saved proxy mode, and local outlet checks. Saving this page does not start Stargate or apply forwarding rules.", "运行状态、已保存代理模式和本机出口检测。保存本页不会启动 Stargate，也不会应用转发规则。")
 
 local function has_active_node()
   local server = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null"))
@@ -148,7 +141,7 @@ function dash.cfgvalue()
 end
 
 local_proxy = s:option(Flag, "enabled", ui_text("Local proxy", "本机代理"))
-local_proxy.description = ui_text("Enable Stargate with local SOCKS/HTTP inbounds only. Use Save & Apply in the bottom-right corner to commit this choice.", "启用 Stargate 本机 SOCKS/HTTP 入站。勾选后使用右下角“保存&应用”提交。")
+local_proxy.description = ui_text("Save the desired local SOCKS/HTTP mode only. Runtime start and stop must be triggered explicitly.", "只保存期望的本机 SOCKS/HTTP 模式。启动和停止运行态必须显式触发。")
 local_proxy.default = "0"
 local_proxy.rmempty = false
 
