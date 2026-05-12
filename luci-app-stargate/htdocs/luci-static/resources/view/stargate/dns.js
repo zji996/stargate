@@ -46,12 +46,12 @@ return view.extend({
     localPath.depends({ local_preset: 'custom', local_type: 'https' });
 
     var remotePreset = s.option(form.ListValue, 'remote_preset', _('Remote DNS server'));
-    remotePreset.value('quad9_doh', _('Quad9 DoH (recommended)'));
+    remotePreset.value('google_doh', _('Google DoH (recommended)'));
+    remotePreset.value('quad9_doh', _('Quad9 DoH'));
     remotePreset.value('cloudflare_doh', _('Cloudflare DoH'));
     remotePreset.value('cloudflare_security_doh', _('Cloudflare Security DoH'));
-    remotePreset.value('google_doh', _('Google DoH'));
     remotePreset.value('custom', _('Custom'));
-    remotePreset.default = 'quad9_doh';
+    remotePreset.default = 'google_doh';
     remotePreset.description = _('Used for domains matched by proxy rules. Presets avoid protocol and path mismatches that often make DNS fail silently.');
 
     var remoteType = s.option(form.ListValue, 'remote_type', _('Custom remote DNS transport'));
@@ -63,7 +63,7 @@ return view.extend({
     remoteType.depends('remote_preset', 'custom');
 
     var remoteServer = s.option(form.Value, 'remote_server', _('Custom remote DNS server'));
-    remoteServer.default = '9.9.9.9';
+    remoteServer.default = 'dns.google';
     remoteServer.depends('remote_preset', 'custom');
 
     var remotePath = s.option(form.Value, 'remote_path', _('DoH path'));
