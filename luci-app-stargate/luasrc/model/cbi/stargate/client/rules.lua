@@ -95,12 +95,6 @@ geoip_proxy_rule_sets = s:option(Value, "geoip_proxy_rule_sets", translate("Prox
 geoip_proxy_rule_sets.default = "/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs"
 depends_rule_mode(geoip_proxy_rule_sets)
 
-geoip_proxy_extra_cidrs = s:option(TextValue, "geoip_proxy_extra_cidrs", translate("Proxy GeoIP supplement CIDR"))
-geoip_proxy_extra_cidrs.default = "104.244.43.0/24"
-geoip_proxy_extra_cidrs.rows = 2
-geoip_proxy_extra_cidrs.wrap = "off"
-depends_rule_mode(geoip_proxy_extra_cidrs)
-
 custom_direct_domains = s:option(TextValue, "custom_direct_domains", translate("User direct domains"))
 custom_direct_domains.rows = 5
 custom_direct_domains.wrap = "off"

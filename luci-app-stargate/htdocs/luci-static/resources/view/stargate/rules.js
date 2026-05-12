@@ -85,13 +85,6 @@ return view.extend({
     geoipProxySets.depends('mode', 'blacklist');
     geoipProxySets.depends('mode', 'whitelist');
 
-    var geoipProxyExtra = s.option(form.TextValue, 'geoip_proxy_extra_cidrs', _('Proxy GeoIP supplement CIDR'));
-    geoipProxyExtra.default = '104.244.43.0/24';
-    geoipProxyExtra.rows = 2;
-    geoipProxyExtra.wrap = 'off';
-    geoipProxyExtra.depends('mode', 'blacklist');
-    geoipProxyExtra.depends('mode', 'whitelist');
-
     var directDomains = s.option(form.TextValue, 'custom_direct_domains', _('User direct domains'));
     directDomains.rows = 5;
     directDomains.wrap = 'off';
