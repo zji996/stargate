@@ -16,6 +16,7 @@ Usage:
   /usr/share/stargate/stargate.sh check
   /usr/share/stargate/stargate.sh apply
   /usr/share/stargate/stargate.sh rollback
+  /usr/share/stargate/stargate.sh apply-runtime
   /usr/share/stargate/stargate.sh start
   /usr/share/stargate/stargate.sh start-transparent [redirect|tproxy] [port]
   /usr/share/stargate/stargate.sh stop
@@ -62,6 +63,7 @@ case "$action" in
   check) load_config; generated="$(generate_config)"; next_file="$generated"; check_next ;;
   apply) apply_config ;;
   rollback) rollback_config ;;
+  apply-runtime) apply_runtime_state ;;
   start) start_local_proxy ;;
   start-transparent) start_transparent_proxy "${2:-redirect}" "${3:-}" ;;
   stop) stop_service ;;

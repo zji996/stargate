@@ -40,9 +40,11 @@ start_local_proxy() {
   transparent_proxy=0
   validate_config
   save_transparent_uci
+  uci_cmd set "$app.global.enabled=1"
   ensure_inbound_section
   uci_cmd set "$app.inbound.transparent_proxy=0"
   uci_commit
+  set_init_enabled 1
   if apply_config && restart_service_with_rollback; then
     firewall_clean >/dev/null 2>&1 || true
     echo "started local proxy mode"
@@ -65,12 +67,14 @@ start_transparent_proxy() {
   transparent_port="$port"
   validate_config
   save_transparent_uci
+  uci_cmd set "$app.global.enabled=1"
   ensure_inbound_section
   uci_cmd set "$app.inbound.transparent_proxy=1"
   uci_cmd set "$app.inbound.transparent_mode=$mode"
   uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
   uci_cmd set "$app.inbound.transparent_port=$port"
   uci_commit
+  set_init_enabled 1
   if apply_config && restart_service_with_rollback && firewall_apply_rules; then
     echo "started transparent proxy mode: $mode"
   else
@@ -81,12 +85,53 @@ start_transparent_proxy() {
   fi
 }
 
+set_init_enabled() {
+  [ -x /etc/init.d/stargate ] || return 0
+  if [ "${1:-0}" = "1" ]; then
+    /etc/init.d/stargate enable >/dev/null 2>&1 || true
+  else
+    /etc/init.d/stargate disable >/dev/null 2>&1 || true
+  fi
+}
+
+apply_runtime_state() {
+  load_config
+  app_enabled="$(bool_value "$(uci_get global enabled 0)")"
+
+  if [ "$app_enabled" != "1" ]; then
+    uci_cmd set "$app.global.enabled=0"
+    ensure_inbound_section
+    uci_cmd set "$app.inbound.transparent_proxy=0"
+    uci_commit
+    set_init_enabled 0
+    stop_service
+    echo "runtime disabled"
+    return 0
+  fi
+
+  set_init_enabled 1
+  if [ "$transparent_proxy" = "1" ]; then
+    start_transparent_proxy "$transparent_mode" "$transparent_port"
+  else
+    start_local_proxy
+  fi
+}
+
 stop_service() {
   [ -x /etc/init.d/stargate ] || {
     echo "service script missing: /etc/init.d/stargate" >&2
     exit 1
   }
-  /etc/init.d/stargate stop
+  uci_cmd set "$app.global.enabled=0" 2>/dev/null || true
+  ensure_inbound_section
+  uci_cmd set "$app.inbound.transparent_proxy=0" 2>/dev/null || true
+  uci_commit 2>/dev/null || true
+  set_init_enabled 0
+  if /etc/init.d/stargate status >/dev/null 2>&1; then
+    /etc/init.d/stargate stop
+  else
+    /etc/init.d/stargate stop >/dev/null 2>&1 || true
+  fi
   firewall_clean >/dev/null 2>&1 || true
   echo "service stopped"
 }
@@ -219,4 +264,3 @@ logs_clear() {
   echo "log clear is not supported on this firmware" >&2
   return 1
 }
-

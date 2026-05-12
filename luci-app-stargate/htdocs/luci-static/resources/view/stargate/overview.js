@@ -3,6 +3,7 @@
 'require form';
 'require fs';
 'require uci';
+'require ui';
 
 function parseStatus(text) {
   try {
@@ -20,6 +21,22 @@ return view.extend({
         return { service: String(err), singbox: '' };
       })
     ]);
+  },
+
+  handleSaveApply: function(ev, mode) {
+    return this.handleSave(ev).then(function() {
+      return ui.changes.apply(mode == '0');
+    }).then(function() {
+      return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'apply-runtime' ])
+        .then(function(text) {
+          if (text)
+            ui.addNotification(null, E('pre', {}, text));
+        })
+        .catch(function(err) {
+          ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
+          throw err;
+        });
+    });
   },
 
   render: function(data) {
@@ -96,12 +113,13 @@ return view.extend({
     mode.value('redirect', 'redirect');
     mode.value('tproxy', 'tproxy');
     mode.default = 'redirect';
-    mode.rmempty = false;
+    mode.rmempty = true;
     mode.depends('transparent_proxy', '1');
 
     var port = tp.option(form.Value, 'transparent_port', _('Transparent port'));
     port.default = '12345';
     port.datatype = 'port';
+    port.rmempty = true;
     port.depends('transparent_proxy', '1');
 
     return m.render().then(function(node) {

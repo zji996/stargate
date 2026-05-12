@@ -10,6 +10,13 @@ local ui_text = common.ui_text
 m = Map("stargate", translate("Stargate"))
 m.description = translate("Runtime status, proxy mode, and local outlet checks.")
 
+function m.on_after_commit(self)
+  local output = sys.exec("/usr/share/stargate/stargate.sh apply-runtime 2>&1")
+  if trim(output) ~= "" then
+    self.message = "<pre>" .. util.pcdata(output) .. "</pre>"
+  end
+end
+
 local function has_active_node()
   local server = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null"))
   local password = trim(sys.exec("uci -q get stargate.node.password 2>/dev/null"))
@@ -157,12 +164,13 @@ transparent_mode = mode_section:option(ListValue, "transparent_mode", ui_text("T
 transparent_mode:value("redirect", "redirect")
 transparent_mode:value("tproxy", "tproxy")
 transparent_mode.default = "redirect"
-transparent_mode.rmempty = false
+transparent_mode.rmempty = true
 transparent_mode:depends("transparent_proxy", "1")
 
 transparent_port = mode_section:option(Value, "transparent_port", ui_text("Transparent port", "透明代理端口"))
 transparent_port.default = "12345"
 transparent_port.datatype = "port"
+transparent_port.rmempty = true
 transparent_port:depends("transparent_proxy", "1")
 
 return m
