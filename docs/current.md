@@ -40,13 +40,15 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 2026-05-11 在路由器上部署 LuCI 时发现该固件不支持 Lua controller 的 `view()` 入口，已改用 `cbi()` + `luasrc/model/cbi/stargate/client/*.lua`。服务菜单已正常出现。
 - Overview 状态面板参考 PassWall2 的点击式检测体验；未运行时检测会明确显示 Stargate 未运行。Stargate 运行时连接检测走本地 HTTP 入站以体现代理后的可达状态，只有透明代理已开启且转发规则实际 Active 时才标记为透明代理路径。检测结果返回 HTTP 状态、延迟、出口 dev/src 和检测路径。
 - Overview 保留状态、连接检测和勾选式启用入口：先勾选本机代理，之后才允许勾选透明代理，并通过 LuCI 右下角保存应用提交。透明代理默认仍关闭，不会在未显式勾选时接管网络。
-- Overview 保存后会调用统一的运行态同步入口：`global.enabled=0` 时停止 Stargate、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 时按当前本机/透明代理配置生成配置、校验并启动。init 脚本本身也会尊重 `global.enabled`，避免重启后绕过 LuCI 重新拉起代理。
+- 2026-05-12 复盘实机断网问题后，Overview 保存不再调用 `apply-runtime`，LuCI/CBI 保存只写 UCI 配置，不启动 Stargate，也不应用透明转发。init `reload` 也不再按 UCI 自动同步运行态。
+- init `start` 只启动 sing-box 本体，不再自动调用 `firewall-apply-rules`；透明转发只允许通过显式 `start-transparent` 或 `firewall-apply` 路径应用。
+- Stargate 透明转发会只读检测 PassWall2、PassWall、OpenClash 等已启用或运行状态；默认发现冲突即拒绝应用，除非操作者明确设置 `safety.allow_proxy_conflict=1` 或临时环境变量 `STARGATE_ALLOW_PROXY_CONFLICT=1`。
 - 日志独立为 Logs 页；Maintenance（维护）页分为 `sing-box 设置` 和 `备份还原` 两块，前者只保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 的备份还原体验，提供下载备份、恢复备份、恢复默认配置和保留生成配置回滚。
 - Logs 页默认过滤 sing-box 直连出站超时噪声并移除 ANSI 颜色码，同时保留原始日志视图和清理系统日志入口。
 - 未配置当前节点时，Overview 会显示阻塞提示；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
 - Node 页开始提供轻量节点列表，支持手动添加 AnyTLS、通过 `anytls://` 链接添加、编辑节点、使用节点和删除节点。新增和链接添加入口位于节点列表上方，节点编辑和“使用此节点”跟随列表行。第一版不做订阅和多协议导入。
 - DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Google 域名 DoH `https://dns.google/dns-query`，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。远端 DoH 会显式使用 `direct-dns` 解析自身域名，再通过代理出站拨号，避免 `dns.google` 的自举连接按直连拨出。DNS 重定向默认开启，透明代理防火墙规则应用后会把受管设备的 53 端口导入 sing-box DNS。
-- Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
+- Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。默认与其他透明代理共存时拒绝应用，某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
 - Rules 页改为 Loyalsoldier clash-rules + sing-box GeoIP rule-set 基础规则体系，不随包内置规则数据，也不内置去广告规则。用户需要显式更新规则，后端将 `direct/private/cncidr/lancidr` 合成为直连域名/CIDR rule-set，将 `proxy/gfw/tld-not-cn/telegramcidr` 合成为代理域名/CIDR rule-set，并额外下载 MetaCubeX 的 `geoip-cn/google/facebook/twitter/telegram` `.srs` 供裸 IP 分流使用；页面只暴露黑名单/白名单模式和少量用户覆盖规则，默认出站与代理出站由模式自动决定。
 - 黑名单模式保持“命中 Proxy 才代理，命中 Direct 或未命中则直连”。透明代理不会因为目标是 TCP/443 就默认代理；HTTPS 代理判断依赖 DNS 劫持带来的域名、TLS/HTTP sniff、基础域名规则和 GeoIP rule-set 命中。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被直连规则提前截走。域名规则未命中时，会先用直连 DNS 解析一次，再用 GeoIP rule-set 对解析出的地址复判，避免 Google/Meta 等裸 IP 被落到默认直连。
 - Rules 页提供测试策略入口，可输入域名或 IP，按当前模式、用户规则、基础规则集和默认出站判断最终走 Proxy 还是 Direct，并显示命中原因。
@@ -96,4 +98,4 @@ curl --socks5-hostname 127.0.0.1:10808 https://www.cloudflare.com/cdn-cgi/trace
 
 ## 下一步
 
-下一步优先根据实际页面体验调整 CBI 页面布局，再验证 UCI 保存、配置生成、`sing-box check` 和服务启动。任何会改变系统网络行为的能力都必须默认关闭，并有预检和回滚。
+下一步优先在实机重新部署 LuCI 包，验证 Overview 保存不会启动服务、reload 不会应用运行态、PassWall2 运行时 Stargate 透明转发会被拒绝。任何会改变系统网络行为的能力都必须默认关闭，并有预检和回滚。

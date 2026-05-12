@@ -21,17 +21,31 @@ Stargate 当前只管理自己的 sing-box 配置、服务和防火墙规则，�
 ## 推荐启用顺序
 
 1. 只配置节点，不启用透明代理。
-2. 勾选本机代理，保存并应用。
-3. 确认 Overview 中 Baidu、Google、GitHub 检测能体现本机代理路径。
-4. 在 Rules 页更新基础规则。
-5. 用 Rules 页测试策略确认常见目标：
+2. 保存 Overview 配置；保存动作只写 UCI，不启动服务或应用转发。
+3. 需要测试 Stargate 时，再显式执行 `/usr/share/stargate/stargate.sh start`，确认只监听本机 SOCKS/HTTP。
+4. 确认 Overview 中 Baidu、Google、GitHub 检测能体现本机代理路径。
+5. 在 Rules 页更新基础规则。
+6. 用 Rules 页测试策略确认常见目标：
    - `baidu.com` 应为 Direct。
    - `google.com`、`chatgpt.com`、`github.com` 应按规则走 Proxy 或预期路径。
    - 直接测试 Google、Meta、Twitter/X、Telegram 的 IP 时，应优先由 GeoIP proxy rule-set 或内置补丁命中。
-6. 再勾选透明代理并应用转发规则。
-7. 从局域网设备访问国内站、海外站、游戏或组网服务，观察是否符合“命中 Proxy 才代理，直连目标保持直连”。
+7. 确认 PassWall2、PassWall、OpenClash 等其他透明代理已停用后，再勾选透明代理并显式应用转发规则。
+8. 从局域网设备访问国内站、海外站、游戏或组网服务，观察是否符合“命中 Proxy 才代理，直连目标保持直连”。
 
-透明代理默认不启用。只有本机代理已经启用后，才应该允许透明代理生效。关闭代理时，`global.enabled=0` 应停止服务、禁用 init 自启并清理 Stargate 防火墙规则。
+透明代理默认不启用。只有本机代理已经启用后，才应该允许透明代理生效。保存 UCI 不等于运行态切换；关闭运行态应显式执行 `/usr/share/stargate/stargate.sh stop`，它会停止服务、禁用 init 自启并清理 Stargate 防火墙规则。
+
+## 2026-05-12 断网复盘
+
+本次实机问题的直接风险点是 LuCI 保存路径过于激进：Overview 的 Save & Apply 和 CBI fallback 的 `on_after_commit` 会立即调用 `apply-runtime`，init `reload` 也会按 UCI 自动同步运行态。只要页面里留下了 `transparent_proxy=1`，一次普通保存就可能启动 Stargate 并应用透明转发。
+
+透明转发本身会接管 LAN 侧 TCP、DNS 53、IPv6 guard 和 UDP/443 QUIC 阻断；当 PassWall2 已经在管理 DNS、nftables 和 xray 转发时，两个透明代理同时抢入口，国内域名解析和直连流量就可能被送进 Stargate 的未稳定规则或节点路径，表现为国内站无法访问。
+
+修复方向：
+
+- LuCI 保存只写 UCI，不再自动启动、停止或应用转发。
+- init `reload` 不再调用 `apply-runtime`，init `start` 不再自动应用防火墙规则。
+- 透明转发应用前只读检测 PassWall2、PassWall、OpenClash 等冲突代理，默认拒绝共存。
+- `global.auto_start=0` 保持默认，显式启动不会自动打开开机自启。
 
 ## 规则和 GeoIP
 

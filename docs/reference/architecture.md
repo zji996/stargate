@@ -73,12 +73,12 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 LuCI 版后端还提供两个显式启动动作：
 
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
-- `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。
-- `apply-runtime`：按当前 UCI 期望同步运行态。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。
+- `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。应用透明转发前会拒绝与 PassWall2、PassWall、OpenClash 等已启用或运行的透明代理共存，除非操作者显式放行。
+- `apply-runtime`：按当前 UCI 期望同步运行态的显式命令入口。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。LuCI 保存和 init reload 不再自动调用该入口。
 
-这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
+这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP，也不会在 LuCI 保存配置时自动抢占运行态。
 
-LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
+LuCI Overview 的保存动作只写入 UCI，不启动服务、不停止服务、不应用透明转发。init 脚本 `reload` 也只给出提示，不按 UCI 自动启动代理。init `start` 会读取 `global.enabled`，但只启动 sing-box 本体；防火墙转发必须通过 `start-transparent` 或 `firewall-apply` 显式应用。`global.auto_start=0` 是默认值，显式 `start` 不会强行打开开机自启。
 
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
 
