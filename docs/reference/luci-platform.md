@@ -183,7 +183,7 @@ LuCI 页面不再要求用户手工拼协议、服务器和 DoH path。直连 DN
 - 上游代理列表：`proxy.txt`、`gfw.txt`、`tld-not-cn.txt`、`telegramcidr.txt`，合成为 `/usr/share/stargate/rules/proxy.json` 并编译为 `proxy.srs`
 - 直连 GeoIP：`geoip-cn.srs`
 - 代理 GeoIP：`geoip-google.srs`、`geoip-facebook.srs`、`geoip-twitter.srs`、`geoip-telegram.srs`
-- 内置代理 GeoIP 补丁：默认 `104.244.43.0/24`，用于覆盖当前上游 Twitter/X GeoIP 漏段，不在 Rules 页暴露为常规用户选项
+- 内置代理 GeoIP 补丁：默认包含 `104.244.43.0/24` 和 `175.41.128.0/18`，用于覆盖当前已观测的上游 GeoIP 漏段，不在 Rules 页暴露为常规用户选项
 - 运行时格式：`binary`
 - 用户自定义直连域名：生成优先 route rule，出站为 `direct`
 - 用户自定义代理域名：生成优先 route rule，出站为 `anytls-out`

@@ -93,7 +93,7 @@ load_config() {
   rules_proxy_rule_set="$(uci_get rules proxy_rule_set /usr/share/stargate/rules/proxy.json)"
   rules_geoip_direct_rule_set="$(uci_get rules geoip_direct_rule_set /usr/share/stargate/rules/geoip-cn.srs)"
   rules_geoip_proxy_rule_sets="$(uci_get rules geoip_proxy_rule_sets '/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs')"
-  rules_geoip_proxy_extra_cidrs="$(uci_get rules geoip_proxy_extra_cidrs '104.244.43.0/24')"
+  rules_geoip_proxy_extra_cidrs="$(uci_get rules geoip_proxy_extra_cidrs '104.244.43.0/24 175.41.128.0/18')"
   rules_custom_direct_domains="$(uci_get rules custom_direct_domains '')"
   rules_custom_proxy_domains="$(uci_get rules custom_proxy_domains '')"
   rules_custom_direct_ips="$(uci_get rules custom_direct_ips '')"

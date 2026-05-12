@@ -116,7 +116,7 @@ LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直�
 
 Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set、GeoIP direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
 
-黑名单模式下，透明代理的最终出站仍然是 `direct`：只有命中用户代理规则、基础 proxy rule-set 或 GeoIP proxy rule-set 的流量才走 `anytls-out`。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被 direct 列表提前截走。Stargate 不再按 `TCP/443` 做通用代理兜底，避免把未命中的普通 HTTPS 直连网站误送进代理。透明代理的域名识别主要依赖受管设备 DNS 重定向、sing-box DNS `reverse_mapping` 和 TLS/HTTP sniff；域名规则未命中时会执行一次 `resolve`，再用 GeoIP direct/proxy rule-set 对解析出的目标地址复判。直接按 IP 连接的 Google、Meta、Twitter/X、Telegram 等常见目标由 GeoIP proxy `.srs` 补齐，并内置补充 Twitter/X 上游漏掉的 `104.244.43.0/24`；QUIC 由防火墙层阻断 `UDP/443` 后回退到 TCP/TLS，提高可识别性。
+黑名单模式下，透明代理的最终出站仍然是 `direct`：只有命中用户代理规则、基础 proxy rule-set 或 GeoIP proxy rule-set 的流量才走 `anytls-out`。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被 direct 列表提前截走。Stargate 不再按 `TCP/443` 做通用代理兜底，避免把未命中的普通 HTTPS 直连网站误送进代理。透明代理的域名识别主要依赖受管设备 DNS 重定向、sing-box DNS `reverse_mapping` 和 TLS/HTTP sniff；域名规则未命中时会执行一次 `resolve`，再用 GeoIP direct/proxy rule-set 对解析出的目标地址复判。直接按 IP 连接的 Google、Meta、Twitter/X、Telegram 等常见目标由 GeoIP proxy `.srs` 补齐，并内置补充 Twitter/X 上游漏掉的 `104.244.43.0/24` 和已观测 AWS 新加坡裸 IP 段 `175.41.128.0/18`；QUIC 由防火墙层阻断 `UDP/443` 后回退到 TCP/TLS，提高可识别性。
 
 用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的少量例外：基础 `cncidr/lancidr` 与 GeoIP rule-set 已覆盖常见直连和代理 IP 段，用户 IP/CIDR 默认可以留空。直连 IP/CIDR 会在 sing-box 路由中走 `direct`；透明代理转发已应用且 iptables/ipset 可用时，基础 direct rule-set 中的 IPv4 CIDR、常见内网段和用户直连 IP/CIDR 会进入 `STARGATE_DIRECT4` 绕过集合，让 IP 层已经能确定直连的目标真正绕过 sing-box。代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 默认开启，属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
 
