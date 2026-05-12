@@ -98,8 +98,8 @@ config dns 'dns'
 	option local_server '223.5.5.5'
 	option local_type 'tcp'
 	option local_path '/dns-query'
-	option remote_preset 'quad9_doh'
-	option remote_server '9.9.9.9'
+	option remote_preset 'google_doh'
+	option remote_server 'dns.google'
 	option remote_type 'https'
 	option remote_path '/dns-query'
 	option remote_detour 'anytls-out'
@@ -110,8 +110,12 @@ config rules 'rules'
 	option mode 'blacklist'
 	option source 'loyalsoldier'
 	option source_base_url 'https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release'
+	option geoip_base_url 'https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip'
 	option direct_rule_set '/usr/share/stargate/rules/direct.json'
 	option proxy_rule_set '/usr/share/stargate/rules/proxy.json'
+	option geoip_direct_rule_set '/usr/share/stargate/rules/geoip-cn.srs'
+	option geoip_proxy_rule_sets '/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs'
+	option geoip_proxy_extra_cidrs '104.244.43.0/24'
 	option block_quic '1'
 	option private_direct '1'
 	option custom_direct_domains ''
@@ -170,4 +174,3 @@ singbox_rollback() {
   "$singbox_bin" version | head -1
   echo "sing-box rolled back: $singbox_bin"
 }
-

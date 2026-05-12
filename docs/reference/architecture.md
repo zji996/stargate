@@ -74,8 +74,11 @@ LuCI 版后端还提供两个显式启动动作：
 
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
 - `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。
+- `apply-runtime`：按当前 UCI 期望同步运行态。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。
 
 这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
+
+LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
 
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
 
@@ -91,7 +94,7 @@ Advanced 页的“转发配置”负责防火墙规则应用和清理。后端�
 
 - `local`：系统本地解析器。
 - `direct-dns`：默认使用阿里 DNS 的 TCP 预设 `tcp://223.5.5.5`。
-- `remote-doh`：默认使用 Quad9 DoH 预设 `https://9.9.9.9/dns-query`，通过代理出站。
+- `remote-doh`：默认使用 Google 域名 DoH 预设 `https://dns.google/dns-query`，通过代理出站；它会显式用 `direct-dns` 解析 DoH 服务器域名，避免 DoH 自举连接绕过节点。
 - `final`：默认 `direct-dns`。命中代理规则的域名仍会走 `remote-doh`，未命中的域名使用直连 DNS 兜底。
 
 第一阶段的入站 SOCKS/HTTP 使用 sing-box 的 DNS 解析能力，不接管局域网 DNS。
@@ -102,17 +105,22 @@ LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直�
 
 ## 规则策略
 
-第一版规则来源使用 `Loyalsoldier/clash-rules` 的 release 文本列表，并转换为 sing-box rule-set：
+第一版规则来源使用 `Loyalsoldier/clash-rules` 的 release 文本列表，并配合 MetaCubeX 的 sing-box GeoIP `.srs`：
 
 - `direct.txt`、`private.txt`、`cncidr.txt`、`lancidr.txt` 合成为 `/usr/share/stargate/rules/direct.json`，再编译为运行时使用的 `direct.srs`。
 - `proxy.txt`、`gfw.txt`、`tld-not-cn.txt`、`telegramcidr.txt` 合成为 `/usr/share/stargate/rules/proxy.json`，再编译为运行时使用的 `proxy.srs`。
+- `geoip-cn.srs` 作为直连 GeoIP rule-set；`geoip-google.srs`、`geoip-facebook.srs`、`geoip-twitter.srs`、`geoip-telegram.srs` 作为代理 GeoIP rule-set。它们来自 `https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip`，直接以 sing-box binary rule-set 形式保存。
 - 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成优先级高于上游列表的 route rule。
 
-规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件，也不随包携带 clash-rules 数据或去广告列表；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
+规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件，也不随包携带 clash-rules、GeoIP 或去广告列表；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
 
-Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
+Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set、GeoIP direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
 
-用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的少量例外：基础 `cncidr/lancidr/telegramcidr` 已覆盖常见直连和代理 IP 段，用户 IP/CIDR 默认可以留空。直连 IP/CIDR 会在 sing-box 路由中走 `direct`，并在透明代理防火墙链中先 `RETURN`，让明确直连的目标真正绕过透明代理；代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 默认开启，属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
+黑名单模式下，透明代理的最终出站仍然是 `direct`：只有命中用户代理规则、基础 proxy rule-set 或 GeoIP proxy rule-set 的流量才走 `anytls-out`。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被 direct 列表提前截走。Stargate 不再按 `TCP/443` 做通用代理兜底，避免把未命中的普通 HTTPS 直连网站误送进代理。透明代理的域名识别主要依赖受管设备 DNS 重定向、sing-box DNS `reverse_mapping` 和 TLS/HTTP sniff；域名规则未命中时会执行一次 `resolve`，再用 GeoIP direct/proxy rule-set 对解析出的目标地址复判。直接按 IP 连接的 Google、Meta、Twitter/X、Telegram 等常见目标由 GeoIP proxy `.srs` 补齐，并默认补充 Twitter/X 上游漏掉的 `104.244.43.0/24`；QUIC 由防火墙层阻断 `UDP/443` 后回退到 TCP/TLS，提高可识别性。
+
+用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的少量例外：基础 `cncidr/lancidr` 与 GeoIP rule-set 已覆盖常见直连和代理 IP 段，用户 IP/CIDR 默认可以留空。直连 IP/CIDR 会在 sing-box 路由中走 `direct`；透明代理转发已应用且 iptables/ipset 可用时，基础 direct rule-set 中的 IPv4 CIDR、常见内网段和用户直连 IP/CIDR 会进入 `STARGATE_DIRECT4` 绕过集合，让 IP 层已经能确定直连的目标真正绕过 sing-box。代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 默认开启，属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
+
+透明代理防火墙入口按 PassWall2 的经验前插到 PREROUTING/FORWARD 链，避免被固件已有的 `physdev`、zone 或自定义 ACCEPT 规则提前放行。DNS 重定向入口必须在通用 TCP redirect 入口之前。redirect 模式当前只代理 IPv4 TCP；公网 IPv6 在透明代理启用时由 Stargate IPv6 guard 阻断，本地 IPv6、ULA、link-local 和 multicast 仍保留。
 
 ## 路由器经验
 

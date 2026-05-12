@@ -76,8 +76,8 @@ load_config() {
   dns_local_server="$(uci_get dns local_server 223.5.5.5)"
   dns_local_type="$(uci_get dns local_type tcp)"
   dns_local_path="$(uci_get dns local_path /dns-query)"
-  dns_remote_preset="$(uci_get dns remote_preset quad9_doh)"
-  dns_remote_server="$(uci_get dns remote_server 9.9.9.9)"
+  dns_remote_preset="$(uci_get dns remote_preset google_doh)"
+  dns_remote_server="$(uci_get dns remote_server dns.google)"
   dns_remote_type="$(uci_get dns remote_type https)"
   dns_remote_path="$(uci_get dns remote_path /dns-query)"
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
@@ -88,8 +88,12 @@ load_config() {
   rules_default_outbound="direct"
   rules_source="$(uci_get rules source loyalsoldier)"
   rules_source_base_url="$(uci_get rules source_base_url https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release)"
+  rules_geoip_base_url="$(uci_get rules geoip_base_url https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip)"
   rules_direct_rule_set="$(uci_get rules direct_rule_set /usr/share/stargate/rules/direct.json)"
   rules_proxy_rule_set="$(uci_get rules proxy_rule_set /usr/share/stargate/rules/proxy.json)"
+  rules_geoip_direct_rule_set="$(uci_get rules geoip_direct_rule_set /usr/share/stargate/rules/geoip-cn.srs)"
+  rules_geoip_proxy_rule_sets="$(uci_get rules geoip_proxy_rule_sets '/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs')"
+  rules_geoip_proxy_extra_cidrs="$(uci_get rules geoip_proxy_extra_cidrs '104.244.43.0/24')"
   rules_custom_direct_domains="$(uci_get rules custom_direct_domains '')"
   rules_custom_proxy_domains="$(uci_get rules custom_proxy_domains '')"
   rules_custom_direct_ips="$(uci_get rules custom_direct_ips '')"
@@ -142,6 +146,19 @@ validate_config() {
       echo "compiled proxy rule-set missing: run Rules -> Update base rules first ($proxy_runtime_rule_set)" >&2
       exit 1
     }
+    if [ -n "$rules_geoip_direct_rule_set" ]; then
+      [ -f "$rules_geoip_direct_rule_set" ] || {
+        echo "GeoIP direct rule-set missing: run Rules -> Update base rules first ($rules_geoip_direct_rule_set)" >&2
+        exit 1
+      }
+    fi
+    printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_rule_set; do
+      [ -n "$geoip_rule_set" ] || continue
+      [ -f "$geoip_rule_set" ] || {
+        echo "GeoIP proxy rule-set missing: run Rules -> Update base rules first ($geoip_rule_set)" >&2
+        exit 1
+      }
+    done
   fi
 }
 
@@ -194,7 +211,7 @@ apply_dns_presets() {
       ;;
     google_doh)
       dns_remote_type="https"
-      dns_remote_server="8.8.8.8"
+      dns_remote_server="dns.google"
       dns_remote_path="/dns-query"
       ;;
     quad9_doh)
@@ -246,4 +263,3 @@ split_host_port() {
       ;;
   esac
 }
-

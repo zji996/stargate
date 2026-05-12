@@ -40,7 +40,7 @@ local function depends_rule_mode(option)
 end
 
 m = Map("stargate", translate("Rules"))
-m.description = ui_text("Use Loyalsoldier clash-rules as the base rule source. Domain and IP CIDR rules are generated together; user overrides are only for exceptions.", "以 Loyalsoldier clash-rules 作为基础规则源，同时生成域名和 IP CIDR 规则；用户规则只用于少量例外覆盖。")
+m.description = ui_text("Use Loyalsoldier clash-rules for domain rules and sing-box GeoIP rule-sets for IP CIDR routing; user overrides are only for exceptions.", "域名规则使用 Loyalsoldier clash-rules，IP 分流使用 sing-box GeoIP rule-set；用户规则只用于少量例外覆盖。")
 
 local message = nil
 local test_output = nil
@@ -75,6 +75,10 @@ source_base_url = s:option(Value, "source_base_url", translate("Source base URL"
 source_base_url.default = "https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release"
 depends_rule_mode(source_base_url)
 
+geoip_base_url = s:option(Value, "geoip_base_url", translate("GeoIP source base URL"))
+geoip_base_url.default = "https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip"
+depends_rule_mode(geoip_base_url)
+
 direct_rule_set = s:option(Value, "direct_rule_set", translate("Direct rule-set path"))
 direct_rule_set.default = "/usr/share/stargate/rules/direct.json"
 depends_rule_mode(direct_rule_set)
@@ -82,6 +86,20 @@ depends_rule_mode(direct_rule_set)
 proxy_rule_set = s:option(Value, "proxy_rule_set", translate("Proxy rule-set path"))
 proxy_rule_set.default = "/usr/share/stargate/rules/proxy.json"
 depends_rule_mode(proxy_rule_set)
+
+geoip_direct_rule_set = s:option(Value, "geoip_direct_rule_set", translate("Direct GeoIP rule-set path"))
+geoip_direct_rule_set.default = "/usr/share/stargate/rules/geoip-cn.srs"
+depends_rule_mode(geoip_direct_rule_set)
+
+geoip_proxy_rule_sets = s:option(Value, "geoip_proxy_rule_sets", translate("Proxy GeoIP rule-set paths"))
+geoip_proxy_rule_sets.default = "/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs"
+depends_rule_mode(geoip_proxy_rule_sets)
+
+geoip_proxy_extra_cidrs = s:option(TextValue, "geoip_proxy_extra_cidrs", translate("Proxy GeoIP supplement CIDR"))
+geoip_proxy_extra_cidrs.default = "104.244.43.0/24"
+geoip_proxy_extra_cidrs.rows = 2
+geoip_proxy_extra_cidrs.wrap = "off"
+depends_rule_mode(geoip_proxy_extra_cidrs)
 
 custom_direct_domains = s:option(TextValue, "custom_direct_domains", translate("User direct domains"))
 custom_direct_domains.rows = 5

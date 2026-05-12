@@ -10,7 +10,12 @@
         "/etc/stargate/config.json": [ "read" ],
         "/etc/stargate/config.json.next": [ "read" ],
         "/usr/share/stargate/rules/direct.json": [ "read", "stat" ],
-        "/usr/share/stargate/rules/proxy.json": [ "read", "stat" ]
+        "/usr/share/stargate/rules/proxy.json": [ "read", "stat" ],
+        "/usr/share/stargate/rules/geoip-cn.srs": [ "read", "stat" ],
+        "/usr/share/stargate/rules/geoip-google.srs": [ "read", "stat" ],
+        "/usr/share/stargate/rules/geoip-facebook.srs": [ "read", "stat" ],
+        "/usr/share/stargate/rules/geoip-twitter.srs": [ "read", "stat" ],
+        "/usr/share/stargate/rules/geoip-telegram.srs": [ "read", "stat" ]
       }
     },
     "write": {
@@ -24,6 +29,11 @@
         "/etc/stargate/config.json.next": [ "write" ],
         "/usr/share/stargate/rules/direct.json": [ "write" ],
         "/usr/share/stargate/rules/proxy.json": [ "write" ],
+        "/usr/share/stargate/rules/geoip-cn.srs": [ "write" ],
+        "/usr/share/stargate/rules/geoip-google.srs": [ "write" ],
+        "/usr/share/stargate/rules/geoip-facebook.srs": [ "write" ],
+        "/usr/share/stargate/rules/geoip-twitter.srs": [ "write" ],
+        "/usr/share/stargate/rules/geoip-telegram.srs": [ "write" ],
         "/usr/share/stargate/stargate.sh": [ "exec" ],
         "/etc/init.d/stargate": [ "exec" ],
         "/tmp/stargate-restore-upload.tar.gz": [ "write" ],

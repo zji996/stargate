@@ -36,7 +36,7 @@ return view.extend({
 
   render: function(status) {
     var m = new form.Map('stargate', _('Rules'));
-    m.description = _('Use Loyalsoldier clash-rules as the base rule source. Domain and IP CIDR rules are generated together; user overrides are only for exceptions.');
+    m.description = _('Use Loyalsoldier clash-rules for domain rules and sing-box GeoIP rule-sets for IP CIDR routing; user overrides are only for exceptions.');
 
     var s = m.section(form.NamedSection, 'rules', 'rules', _('Rule policy'));
     s.anonymous = true;
@@ -60,6 +60,11 @@ return view.extend({
     sourceBase.depends('mode', 'blacklist');
     sourceBase.depends('mode', 'whitelist');
 
+    var geoipBase = s.option(form.Value, 'geoip_base_url', _('GeoIP source base URL'));
+    geoipBase.default = 'https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip';
+    geoipBase.depends('mode', 'blacklist');
+    geoipBase.depends('mode', 'whitelist');
+
     var directSet = s.option(form.Value, 'direct_rule_set', _('Direct rule-set path'));
     directSet.default = '/usr/share/stargate/rules/direct.json';
     directSet.depends('mode', 'blacklist');
@@ -69,6 +74,23 @@ return view.extend({
     proxySet.default = '/usr/share/stargate/rules/proxy.json';
     proxySet.depends('mode', 'blacklist');
     proxySet.depends('mode', 'whitelist');
+
+    var geoipDirectSet = s.option(form.Value, 'geoip_direct_rule_set', _('Direct GeoIP rule-set path'));
+    geoipDirectSet.default = '/usr/share/stargate/rules/geoip-cn.srs';
+    geoipDirectSet.depends('mode', 'blacklist');
+    geoipDirectSet.depends('mode', 'whitelist');
+
+    var geoipProxySets = s.option(form.Value, 'geoip_proxy_rule_sets', _('Proxy GeoIP rule-set paths'));
+    geoipProxySets.default = '/usr/share/stargate/rules/geoip-google.srs /usr/share/stargate/rules/geoip-facebook.srs /usr/share/stargate/rules/geoip-twitter.srs /usr/share/stargate/rules/geoip-telegram.srs';
+    geoipProxySets.depends('mode', 'blacklist');
+    geoipProxySets.depends('mode', 'whitelist');
+
+    var geoipProxyExtra = s.option(form.TextValue, 'geoip_proxy_extra_cidrs', _('Proxy GeoIP supplement CIDR'));
+    geoipProxyExtra.default = '104.244.43.0/24';
+    geoipProxyExtra.rows = 2;
+    geoipProxyExtra.wrap = 'off';
+    geoipProxyExtra.depends('mode', 'blacklist');
+    geoipProxyExtra.depends('mode', 'whitelist');
 
     var directDomains = s.option(form.TextValue, 'custom_direct_domains', _('User direct domains'));
     directDomains.rows = 5;

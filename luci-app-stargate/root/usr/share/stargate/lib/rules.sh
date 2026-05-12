@@ -35,6 +35,8 @@ rules_status() {
   direct_ips="not updated"
   proxy_domains="not updated"
   proxy_ips="not updated"
+  geoip_direct="not updated"
+  geoip_proxy="not updated"
   update_state="idle"
   update_last=""
   saved_state=""
@@ -60,6 +62,33 @@ rules_status() {
     proxy_domains="$(rule_count "$rules_proxy_rule_set" domain_suffix) domains"
     proxy_ips="$(rule_count "$rules_proxy_rule_set" ip_cidr) CIDRs"
   fi
+  if [ -n "$rules_geoip_direct_rule_set" ] && [ -f "$rules_geoip_direct_rule_set" ]; then
+    geoip_direct="$(basename "$rules_geoip_direct_rule_set")"
+  fi
+  geoip_proxy_names=""
+  missing_geoip_proxy=0
+  printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_rule_set; do
+    [ -n "$geoip_rule_set" ] || continue
+    if [ -f "$geoip_rule_set" ]; then
+      if [ -n "$geoip_proxy_names" ]; then
+        geoip_proxy_names="$geoip_proxy_names $(basename "$geoip_rule_set")"
+      else
+        geoip_proxy_names="$(basename "$geoip_rule_set")"
+      fi
+    else
+      missing_geoip_proxy=1
+    fi
+    printf '%s\t%s\n' "$geoip_proxy_names" "$missing_geoip_proxy" >"$tmp_prefix-geoip-proxy-status.$$"
+  done
+  if [ -f "$tmp_prefix-geoip-proxy-status.$$" ]; then
+    geoip_proxy_names="$(awk -F '\t' 'END { print $1 }' "$tmp_prefix-geoip-proxy-status.$$")"
+    missing_geoip_proxy="$(awk -F '\t' 'END { print $2 }' "$tmp_prefix-geoip-proxy-status.$$")"
+    rm -f "$tmp_prefix-geoip-proxy-status.$$"
+  fi
+  if [ -n "$geoip_proxy_names" ]; then
+    geoip_proxy="$geoip_proxy_names"
+    [ "$missing_geoip_proxy" = "1" ] && geoip_proxy="$geoip_proxy (partial)"
+  fi
   printf 'Rule source: Loyalsoldier/clash-rules\n'
   printf 'Rule update: %s\n' "$update_state"
   [ -z "$update_last" ] || printf 'Last update: %s\n' "$update_last"
@@ -67,6 +96,8 @@ rules_status() {
   printf 'Direct IPs: %s\n' "$direct_ips"
   printf 'Proxy domains: %s\n' "$proxy_domains"
   printf 'Proxy IPs: %s\n' "$proxy_ips"
+  printf 'GeoIP direct: %s\n' "$geoip_direct"
+  printf 'GeoIP proxy: %s\n' "$geoip_proxy"
 }
 
 normalize_rule_target() {
@@ -282,6 +313,28 @@ rule_set_ip_match() {
   custom_ip_match "$cidrs" "$target"
 }
 
+binary_rule_set_match() {
+  file="$1"
+  target="$2"
+  [ -f "$file" ] || return 1
+  [ -x "$singbox_bin" ] || return 1
+  output="$("$singbox_bin" rule-set match -f binary "$file" "$target" 2>&1)" || return 1
+  [ -n "$output" ] || return 1
+  printf '%s\n' "$output" | awk 'NR == 1 { print; exit }'
+}
+
+geoip_proxy_match() {
+  target="$1"
+  printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_rule_set; do
+    [ -n "$geoip_rule_set" ] || continue
+    match="$(binary_rule_set_match "$geoip_rule_set" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf '%s:%s\n' "$(basename "$geoip_rule_set")" "$match"
+      return 0
+    fi
+  done
+}
+
 rules_test() {
   load_config
   target="$(normalize_rule_target "${1:-}")"
@@ -312,11 +365,11 @@ rules_test() {
       printf 'Reason: user proxy IP (%s)\n' "$match"
       return 0
     fi
-    match="$(rule_set_ip_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+    match="$(custom_ip_match "$rules_geoip_proxy_extra_cidrs" "$target" 2>/dev/null || true)"
     if [ -n "$match" ]; then
-      printf 'Decision: Direct\n'
-      printf 'Outbound: direct\n'
-      printf 'Reason: direct rule-set IP (%s)\n' "$match"
+      printf 'Decision: Proxy\n'
+      printf 'Outbound: anytls-out\n'
+      printf 'Reason: GeoIP proxy supplement (%s)\n' "$match"
       return 0
     fi
     match="$(rule_set_ip_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
@@ -324,6 +377,27 @@ rules_test() {
       printf 'Decision: Proxy\n'
       printf 'Outbound: anytls-out\n'
       printf 'Reason: proxy rule-set IP (%s)\n' "$match"
+      return 0
+    fi
+    match="$(geoip_proxy_match "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Proxy\n'
+      printf 'Outbound: anytls-out\n'
+      printf 'Reason: GeoIP proxy (%s)\n' "$match"
+      return 0
+    fi
+    match="$(rule_set_ip_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Direct\n'
+      printf 'Outbound: direct\n'
+      printf 'Reason: direct rule-set IP (%s)\n' "$match"
+      return 0
+    fi
+    match="$(binary_rule_set_match "$rules_geoip_direct_rule_set" "$target" 2>/dev/null || true)"
+    if [ -n "$match" ]; then
+      printf 'Decision: Direct\n'
+      printf 'Outbound: direct\n'
+      printf 'Reason: GeoIP direct (%s: %s)\n' "$(basename "$rules_geoip_direct_rule_set")" "$match"
       return 0
     fi
     case "$rules_mode" in
@@ -377,19 +451,19 @@ rules_test() {
     return 0
   fi
 
-  match="$(rule_set_domain_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
-  if [ -n "$match" ]; then
-    printf 'Decision: Direct\n'
-    printf 'Outbound: direct\n'
-    printf 'Reason: direct rule-set (%s)\n' "$match"
-    return 0
-  fi
-
   match="$(rule_set_domain_match "$rules_proxy_rule_set" "$target" 2>/dev/null || true)"
   if [ -n "$match" ]; then
     printf 'Decision: Proxy\n'
     printf 'Outbound: anytls-out\n'
     printf 'Reason: proxy rule-set (%s)\n' "$match"
+    return 0
+  fi
+
+  match="$(rule_set_domain_match "$rules_direct_rule_set" "$target" 2>/dev/null || true)"
+  if [ -n "$match" ]; then
+    printf 'Decision: Direct\n'
+    printf 'Outbound: direct\n'
+    printf 'Reason: direct rule-set (%s)\n' "$match"
     return 0
   fi
 
@@ -429,4 +503,3 @@ write_inline_domain_rule() {
   [ -n "$domains" ] || return 0
   printf '{ "domain_suffix": [%s], "outbound": "%s" }' "$domains" "$outbound"
 }
-

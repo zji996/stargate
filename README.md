@@ -59,7 +59,7 @@ sh scripts/stargate.sh status
 - LuCI 页面：Overview、Node、DNS、Rules、Safety
 - 兼容入口：现代 LuCI JS view + 旧式 Lua CBI fallback
 - 后端入口：`/usr/share/stargate/stargate.sh`
-- 基础 GFW rule-set：`/usr/share/stargate/rules/gfw.json`
+- 基础规则：显式更新后生成 `/usr/share/stargate/rules/direct.srs`、`proxy.srs` 和 GeoIP `.srs`
 - 多语言：源码默认英文，`po/zh-cn/stargate.po` 提供简体中文
 
 Stargate 默认共用系统 `/usr/bin/sing-box`，不复制 PassWall2 的私有文件，也不另放一份 sing-box。它使用独立的 `/etc/stargate/config.json` 和 `/etc/init.d/stargate`。

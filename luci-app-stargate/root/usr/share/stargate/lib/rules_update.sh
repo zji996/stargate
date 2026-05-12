@@ -97,6 +97,31 @@ fetch_rule_list() {
   return 1
 }
 
+geoip_remote_name() {
+  name="$(basename "$1")"
+  name="${name%.srs}"
+  name="${name#geoip-}"
+  printf '%s.srs' "$name"
+}
+
+fetch_geoip_rule_set() {
+  remote_name="$(geoip_remote_name "$1")"
+  fetch_rule_list "${rules_geoip_base_url%/}/$remote_name" "$1"
+  [ -s "$1" ] || { echo "downloaded GeoIP rule-set is empty: $remote_name" >&2; exit 1; }
+}
+
+update_geoip_rule_sets() {
+  if [ -n "$rules_geoip_direct_rule_set" ]; then
+    mkdir -p "$(dirname "$rules_geoip_direct_rule_set")"
+    fetch_geoip_rule_set "$rules_geoip_direct_rule_set"
+  fi
+  printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_rule_set; do
+    [ -n "$geoip_rule_set" ] || continue
+    mkdir -p "$(dirname "$geoip_rule_set")"
+    fetch_geoip_rule_set "$geoip_rule_set"
+  done
+}
+
 rules_update() {
   load_config
   [ "$rules_source" = "loyalsoldier" ] || {
@@ -119,6 +144,7 @@ rules_update() {
   write_rule_set_json "$tmp_dir/proxy.txt $tmp_dir/gfw.txt $tmp_dir/tld-not-cn.txt" "$tmp_dir/telegramcidr.txt" "$rules_proxy_rule_set"
   compile_rule_set "$rules_direct_rule_set"
   compile_rule_set "$rules_proxy_rule_set"
+  update_geoip_rule_sets
   echo "Rules updated."
   rules_status
 }
@@ -157,4 +183,3 @@ rules_update_start() {
   echo "Rule update started."
   rules_status
 }
-
