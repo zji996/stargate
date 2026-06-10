@@ -54,6 +54,8 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 阻断 QUIC 默认开启，在防火墙转发层拒绝受管 LAN 设备的 `UDP/443`，使浏览器或应用回退到 TCP/TLS。该选项只处理 `UDP/443`，不会影响其他 UDP 端口或把普通直连 IP 改成代理。
 - 透明代理防火墙规则参考 PassWall2 的链插入经验：Stargate 的 PREROUTING 和 FORWARD 入口必须插到链前部，避免被 fw3/fw4 或桥接场景中已有的 ACCEPT 规则提前放行。DNS 重定向规则必须排在通用 TCP 透明代理规则之前，否则 TCP/53 会被错误送入透明代理端口。当前 redirect 模式只处理 IPv4 TCP，公网 IPv6 通过独立 guard 阻断，避免未代理的 IPv6 直连泄漏。
 - `docs/reference/deployment-notes.md` 记录当前实机部署、分流验证、DNS、QUIC、防火墙和日志排障经验，便于换机器部署时按清单复核。
+- 2026-06-11 实机确认 NetBird userspace WireGuard 在该路由器上内存压力过高，曾多次触发 OOM，内核实际杀掉的是 NetBird 进程而非 Stargate 主 sing-box。已决定路由器不再运行 NetBird，改由需要访问组网的终端各自安装。路由器端已停止/禁用并移走 NetBird 二进制、init、配置目录，清理 `wt0`、`netbird` 路由表、ip rule、NETBIRD iptables/ipset 和 firewall `netbird` zone 残留；备份保存在路由器 `/root/netbird-uninstall-20260611-020132`。
+- 2026-06-11 当前上游另有 NAT/路由承载额外私网网段，路由器访问该网段走默认 WAN 上游。Stargate 的 `STARGATE_DIRECT4` 已确认包含该类私网网段，透明代理不会劫持。
 
 ## 当前边界
 

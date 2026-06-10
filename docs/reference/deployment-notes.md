@@ -18,6 +18,8 @@ free
 
 Stargate 当前只管理自己的 sing-box 配置、服务和防火墙规则，不应停用或改写 PassWall2、OpenClash、NetBird 等其他服务。实机排障时如果需要关闭其他代理，应由操作者明确决定。
 
+内存较小的 OpenWrt 设备不建议同时承担 Stargate 透明代理和 NetBird userspace WireGuard。实机已观测到 NetBird userspace 进程 RSS 可到数十 MB，并在内存紧张时反复成为 OOM victim。更稳的做法是把 NetBird 安装在实际需要组网访问的终端上，路由器只保留普通上游路由/NAT。
+
 ## 推荐启用顺序
 
 1. 只配置节点，不启用透明代理。
@@ -79,6 +81,10 @@ redirect 模式只处理 IPv4 TCP。它不会代理普通 UDP，也不会代理 
 透明代理入口需要插到 PREROUTING 和 FORWARD 链前部，避免被已有的 zone、bridge、physdev 或自定义 ACCEPT 规则提前放行。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。
 
 直连 CIDR 在 iptables/ipset 可用时会进入 `STARGATE_DIRECT4` 绕过集合。能在 IP 层确定直连的流量应尽量绕过 sing-box，减少日志噪声和路由器负载。
+
+iptables 后端应额外保护透明代理入站端口，拒绝 LAN 设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是路由器 transparent port，不应被这条防护影响；直连该端口会让 sing-box redirect 入站拿不到原始目标，产生 `get redirect destination: no such file or directory`。
+
+如果上游网络通过 NAT 或静态路由提供额外私网网段，例如 `192.168.8.0/24`，应确认该网段在 `STARGATE_DIRECT4` 直连集合中，并用 `ip route get` 验证它走普通上游路由而不是透明代理或已卸载的组网接口。
 
 ## 日志判断
 
