@@ -17,10 +17,15 @@ firewall_clean_iptables() {
   iptables -S FORWARD 2>/dev/null | grep 'STARGATE_' | sed 's/^-A /-D /' | while read -r rule; do
     iptables $rule 2>/dev/null || true
   done
+  iptables -S INPUT 2>/dev/null | grep 'STARGATE_' | sed 's/^-A /-D /' | while read -r rule; do
+    iptables $rule 2>/dev/null || true
+  done
   iptables -t nat -F STARGATE_DNS 2>/dev/null || true
   iptables -t nat -X STARGATE_DNS 2>/dev/null || true
   iptables -t nat -F STARGATE_TCP 2>/dev/null || true
   iptables -t nat -X STARGATE_TCP 2>/dev/null || true
+  iptables -F STARGATE_INPUT 2>/dev/null || true
+  iptables -X STARGATE_INPUT 2>/dev/null || true
   iptables -F STARGATE_QUIC 2>/dev/null || true
   iptables -X STARGATE_QUIC 2>/dev/null || true
   command -v ipset >/dev/null 2>&1 && ipset destroy STARGATE_DIRECT4 2>/dev/null || true
@@ -52,6 +57,10 @@ firewall_apply_iptables() {
     iptables -N STARGATE_QUIC
     iptables -A STARGATE_QUIC -p udp --dport 443 -j REJECT
   fi
+  input_guard=0
+  if firewall_setup_transparent_input_guard; then
+    input_guard=1
+  fi
 
   iptables -t nat -A STARGATE_DNS -p udp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
   iptables -t nat -A STARGATE_DNS -p tcp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
@@ -76,8 +85,39 @@ firewall_apply_iptables() {
     if [ "$rules_block_quic" = "1" ]; then
       iptables -I FORWARD 1 -i "$iface" -p udp --dport 443 -j STARGATE_QUIC
     fi
+    if [ "$input_guard" = "1" ]; then
+      iptables -I INPUT 1 -i "$iface" -p tcp --dport "$transparent_port" -j STARGATE_INPUT
+    fi
   done
   firewall_apply_ip6tables_guard
+}
+
+firewall_lan_ipv4_addrs() {
+  {
+    firewall_lan_ifaces | while read -r iface; do
+      [ -n "$iface" ] || continue
+      ip -4 addr show dev "$iface" 2>/dev/null | awk '/inet / { split($2, addr, "/"); print addr[1] }'
+    done
+    uci -q get network.lan.ipaddr 2>/dev/null || true
+  } | awk -F. '
+    NF == 4 {
+      for (i = 1; i <= 4; i++) {
+        if ($i !~ /^[0-9]+$/ || $i < 0 || $i > 255) next
+      }
+      if (!seen[$0]++) print
+    }
+  '
+}
+
+firewall_setup_transparent_input_guard() {
+  iptables -m conntrack -h >/dev/null 2>&1 || return 1
+  lan_addrs="$(firewall_lan_ipv4_addrs)"
+  [ -n "$lan_addrs" ] || return 1
+  iptables -N STARGATE_INPUT || return 1
+  printf '%s\n' "$lan_addrs" | while read -r lan_addr; do
+    [ -n "$lan_addr" ] || continue
+    iptables -A STARGATE_INPUT -p tcp --dport "$transparent_port" -m conntrack --ctorigdst "$lan_addr" --ctorigdstport "$transparent_port" -j REJECT || exit 1
+  done
 }
 
 rule_set_ipv4_cidrs() {
