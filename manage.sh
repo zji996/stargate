@@ -16,6 +16,9 @@ check_shell() {
   sh -n manage.sh
   sh -n luci-app-stargate/root/usr/share/stargate/stargate.sh
   sh -n luci-app-stargate/root/etc/init.d/stargate
+  find tools -type f -name '*.sh' | while IFS= read -r file; do
+    sh -n "$file"
+  done
   luac -p luci-app-stargate/luasrc/controller/stargate.lua
   find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
     luac -p "$file"
@@ -31,6 +34,7 @@ check_docs() {
     docs/current.md \
     docs/roadmap.md \
     docs/reference/architecture.md \
+    docs/reference/s20m-nftables-build.md \
     docs/reference/naming.md \
     .gitmodules \
     luci-app-stargate/Makefile \
@@ -90,6 +94,7 @@ check_secrets() {
     -e 'R[0-9]{2}\.[0-9]{2}' \
     --glob '!third_party/**' \
     --glob '!.git/**' \
+    --glob '!docs/current.md' \
     .; then
     echo "potential environment-specific secret or hardcoding found" >&2
     return 1

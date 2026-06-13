@@ -1,0 +1,18 @@
+# Minimal package intent for an S20M/S20L nftables image.
+#
+# This list is documentation and ImageBuilder input only when the matching
+# ImageBuilder already contains compatible kmod-nft-* packages. For the
+# current HWRT kernel image, the public opkg feeds do not
+# provide those kmods, so use the full buildroot config fragment instead.
+
+firewall4
+nftables-json
+kmod-nft-core
+kmod-nft-fib
+kmod-nft-nat
+kmod-nft-offload
+kmod-nft-socket
+kmod-nft-tproxy
+iptables-nft
+ip6tables-nft
+dnsmasq-full
