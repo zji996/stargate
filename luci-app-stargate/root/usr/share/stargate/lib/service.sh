@@ -44,12 +44,13 @@ start_local_proxy() {
   ensure_inbound_section
   uci_cmd set "$app.inbound.transparent_proxy=0"
   uci_commit
-  set_init_enabled 1
   if apply_config && restart_service_with_rollback; then
+    set_init_enabled 1
     firewall_clean >/dev/null 2>&1 || true
     echo "started local proxy mode"
   else
     rc=$?
+    set_init_enabled 0
     restore_transparent_uci
     exit "$rc"
   fi
@@ -74,11 +75,12 @@ start_transparent_proxy() {
   uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
   uci_cmd set "$app.inbound.transparent_port=$port"
   uci_commit
-  set_init_enabled 1
   if apply_config && restart_service_with_rollback && firewall_apply_rules; then
+    set_init_enabled 1
     echo "started transparent proxy mode: $mode"
   else
     rc=$?
+    set_init_enabled 0
     firewall_clean >/dev/null 2>&1 || true
     restore_transparent_uci
     exit "$rc"
@@ -109,7 +111,6 @@ apply_runtime_state() {
     return 0
   fi
 
-  set_init_enabled 1
   if [ "$transparent_proxy" = "1" ]; then
     start_transparent_proxy "$transparent_mode" "$transparent_port"
   else

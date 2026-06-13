@@ -54,8 +54,17 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 阻断 QUIC 默认开启，在防火墙转发层拒绝受管 LAN 设备的 `UDP/443`，使浏览器或应用回退到 TCP/TLS。该选项只处理 `UDP/443`，不会影响其他 UDP 端口或把普通直连 IP 改成代理。
 - 透明代理防火墙规则参考 PassWall2 的链插入经验：Stargate 的 PREROUTING 和 FORWARD 入口必须插到链前部，避免被 fw3/fw4 或桥接场景中已有的 ACCEPT 规则提前放行。DNS 重定向规则必须排在通用 TCP 透明代理规则之前，否则 TCP/53 会被错误送入透明代理端口。当前 redirect 模式只处理 IPv4 TCP，公网 IPv6 通过独立 guard 阻断，避免未代理的 IPv6 直连泄漏。
 - `docs/reference/deployment-notes.md` 记录当前实机部署、分流验证、DNS、QUIC、防火墙和日志排障经验，便于换机器部署时按清单复核。
-- 2026-06-11 实机确认 NetBird userspace WireGuard 在该路由器上内存压力过高，曾多次触发 OOM，内核实际杀掉的是 NetBird 进程而非 Stargate 主 sing-box。已决定路由器不再运行 NetBird，改由需要访问组网的终端各自安装。路由器端已停止/禁用并移走 NetBird 二进制、init、配置目录，清理 `wt0`、`netbird` 路由表、ip rule、NETBIRD iptables/ipset 和 firewall `netbird` zone 残留；备份保存在路由器 `/root/netbird-uninstall-20260611-020132`。
-- 2026-06-11 当前上游另有 NAT/路由承载额外私网网段，路由器访问该网段走默认 WAN 上游。Stargate 的 `STARGATE_DIRECT4` 已确认包含该类私网网段，透明代理不会劫持。
+
+## 当前实机状态
+
+- 当前 S20M 测试路由器运行 ImmortalWrt `25.12-SNAPSHOT r38139-45f7c116ea`、kernel `6.12.91`、board `clx,s20m`，防火墙为 fw4/nftables，LAN 为 `192.168.6.1/24`，WAN 从上级 `192.168.1.1` 获取地址。
+- 该固件使用 `apk`，不是 `opkg`。LuCI 软件包页面已适配 apk；后续缺包用 `apk add`，不要混装 opkg，也不要做全量包升级。
+- Stargate LuCI 版已部署到实机；`sing-box` 由系统 apk 安装到 `/usr/bin/sing-box`，当前版本 `1.12.25-r1`。LuCI 服务菜单应出现 Stargate，后端 `/usr/share/stargate/stargate.sh status` 正常返回。
+- 当前已配置 AnyTLS 节点，并已更新基础规则。Stargate 处于 enabled/running，透明代理为 redirect 模式，nftables 表 `inet stargate` 已应用；Baidu、Google、GitHub 连接检测均通过 Stargate transparent path。
+- 防火墙后端识别为 `nft`。nft 规则生成使用 `meta l4proto tcp redirect to :PORT`，直连 CIDR 使用 interval set + `auto-merge`，状态以 `/usr/share/stargate/stargate.sh firewall-status` 和 `nft list table inet stargate` 共同确认。
+- 实机已做低风险精简：停用文件共享、Docker、OpenClash、Cloudflared、EasyTier、HAProxy、NFS 等非基础服务；保留 network、firewall、dnsmasq、odhcpd、dropbear、uhttpd、rpcd、时间同步和 MTK/系统服务。
+- 路由器本机 DNS 已固定补充 dnsmasq 上游 `223.5.5.5` 和 `119.29.29.29`，避免新镜像只写入 IPv6 link-local resolver 时解析失败。
+- 近期备份位置：优化前 `/root/stargate-preopt-20260614-002212`，Stargate 安装前 `/root/stargate-install-pre-20260614-003106`。S20M nftables 镜像构建资料见 `tools/s20m-nftables/` 和 `docs/reference/s20m-nftables-build.md`。
 
 ## 当前边界
 

@@ -12,13 +12,60 @@ sing-box version
 command -v curl
 df -h /tmp
 free
+ubus call luci getFeatures 2>/dev/null || true
 ```
 
-不要为了补依赖直接执行全量 `opkg upgrade`。OpenWrt 上全量升级容易引入内核模块、nftables/firewall4 和用户态包版本不匹配。缺什么装什么，安装防火墙相关依赖前先确认当前固件是 fw3/iptables 还是 fw4/nftables。
+不要为了补依赖直接执行全量包升级。OpenWrt 上全量升级容易引入内核模块、nftables/firewall4 和用户态包版本不匹配。缺什么装什么，安装防火墙相关依赖前先确认当前固件是 fw3/iptables 还是 fw4/nftables。
 
 Stargate 当前只管理自己的 sing-box 配置、服务和防火墙规则，不应停用或改写 PassWall2、OpenClash、NetBird 等其他服务。实机排障时如果需要关闭其他代理，应由操作者明确决定。
 
 内存较小的 OpenWrt 设备不建议同时承担 Stargate 透明代理和 NetBird userspace WireGuard。实机已观测到 NetBird userspace 进程 RSS 可到数十 MB，并在内存紧张时反复成为 OOM victim。更稳的做法是把 NetBird 安装在实际需要组网访问的终端上，路由器只保留普通上游路由/NAT。
+
+## 包管理和安装
+
+OpenWrt 24 后续固件可能使用 `apk` 取代 `opkg`。先看系统特性，不要按习惯混装旧包管理器：
+
+```sh
+ubus call luci getFeatures 2>/dev/null || true
+command -v apk || true
+command -v opkg || true
+```
+
+如果结果是 `apk=true`、`opkg=false`，就使用 `apk add` 安装缺失依赖，不要恢复或混装 `opkg`。新版 LuCI 软件包页面已经会按系统特性使用 apk；混装两个包数据库收益很小，反而容易造成依赖状态不一致。
+
+实机安装 Stargate LuCI 版时，优先使用系统包管理器安装 sing-box，再部署本仓库文件：
+
+```sh
+apk add sing-box
+sing-box version
+```
+
+仓库文件对应目标路径：
+
+- `luci-app-stargate/root/*` 展开到 `/`。
+- `luci-app-stargate/htdocs/*` 展开到 `/www`。
+- `luci-app-stargate/luasrc/*` 展开到 `/usr/lib/lua/luci`。
+- `po/zh-cn/stargate.po` 编译为 `stargate.zh-cn.lmo` 后放到 `/usr/lib/lua/luci/i18n/`。
+
+部署后设置可执行权限并刷新 LuCI：
+
+```sh
+chmod 755 /etc/init.d/stargate /usr/share/stargate/stargate.sh
+rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache* /tmp/luci-cache /tmp/rpcdcache
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+```
+
+未配置节点时，Stargate 服务保持 `disabled` 或 `inactive` 是正常状态。此时后端应仍能返回状态，LuCI 菜单也应出现在索引中：
+
+```sh
+/usr/share/stargate/stargate.sh status
+/usr/share/stargate/stargate.sh firewall-status
+/etc/init.d/stargate status
+grep -R "admin/services/stargate\|Stargate" /tmp/luci-indexcache* /tmp/luci-modulecache* 2>/dev/null
+```
+
+如果 LuCI JS 菜单不可见，确认 `/usr/share/luci/menu.d/luci-app-stargate.json`、`/www/luci-static/resources/view/stargate/*.js` 和 `/usr/share/rpcd/acl.d/luci-app-stargate.json` 已部署。如果旧式 CBI fallback 不可见，确认 `luasrc` 文件被放到 `/usr/lib/lua/luci/` 下，而不是 `/usr/lib/lua/` 下。
 
 ## 推荐启用顺序
 
@@ -79,6 +126,10 @@ redirect 模式只处理 IPv4 TCP。它不会代理普通 UDP，也不会代理 
 防火墙后端自动优先 nftables，缺失时回退 iptables。不同 OpenWrt 固件可能实际只可用其中一种，实机判断应以 Stargate status 和系统命令结果为准。
 
 透明代理入口需要插到 PREROUTING 和 FORWARD 链前部，避免被已有的 zone、bridge、physdev 或自定义 ACCEPT 规则提前放行。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。
+
+fw4/nftables 上不要照搬 iptables 写法。透明代理全 TCP 匹配应写成 `meta l4proto tcp redirect to :PORT`，不能写成 `tcp redirect`。大量直连 CIDR 应放进命名 interval set；上游 CIDR 可能重叠，set 需要 `auto-merge`，否则会报 `conflicting intervals specified`。
+
+防火墙应用失败必须向 `apply-runtime` 透传非零退出码。否则会出现 UCI 已勾选、sing-box 已运行，但 `nft list table inet stargate` 不存在的半成功状态；Overview 也会让人误以为透明代理已接管。
 
 直连 CIDR 在 iptables/ipset 可用时会进入 `STARGATE_DIRECT4` 绕过集合。能在 IP 层确定直连的流量应尽量绕过 sing-box，减少日志噪声和路由器负载。
 

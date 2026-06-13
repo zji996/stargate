@@ -213,21 +213,29 @@ firewall_apply_nft() {
   iface_set="$(firewall_lan_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
   [ -n "$iface_set" ] || iface_set='"br-lan"'
   direct_ip_set="$(firewall_direct_bypass_cidrs all | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
+  direct_set_block=""
   direct_ip_return=""
   if [ -n "$direct_ip_set" ]; then
-    direct_ip_return="    iifname { $iface_set } ip daddr { $direct_ip_set } return"
+    direct_set_block="  set direct4 {
+    type ipv4_addr
+    flags interval
+    auto-merge
+    elements = { $direct_ip_set }
+  }
+"
+    direct_ip_return="    iifname { $iface_set } ip daddr @direct4 return"
   fi
   firewall_clean_nft
   tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
   cat >"$tmp_nft" <<EOF
 table inet stargate {
+$direct_set_block
   chain prerouting {
     type nat hook prerouting priority dstnat; policy accept;
     iifname { $iface_set } udp dport 53 redirect to :$dns_hijack_port
     iifname { $iface_set } tcp dport 53 redirect to :$dns_hijack_port
-    iifname { $iface_set } ip daddr { 0.0.0.0/8, 10.0.0.0/8, 100.64.0.0/10, 127.0.0.0/8, 169.254.0.0/16, 172.16.0.0/12, 192.168.0.0/16, 224.0.0.0/4, 240.0.0.0/4 } return
 $direct_ip_return
-    iifname { $iface_set } tcp redirect to :$transparent_port
+    iifname { $iface_set } meta l4proto tcp redirect to :$transparent_port
   }
   chain forward {
     type filter hook forward priority filter; policy accept;
@@ -244,7 +252,9 @@ EOF
     sed -i '/udp dport 443 reject/d' "$tmp_nft"
   fi
   nft -f "$tmp_nft"
+  rc=$?
   rm -f "$tmp_nft"
+  return "$rc"
 }
 
 firewall_backend() {
@@ -267,8 +277,8 @@ firewall_apply_rules() {
   validate_config
   backend="$(firewall_backend)"
   case "$backend" in
-    nft) firewall_apply_nft ;;
-    iptables) firewall_apply_iptables ;;
+    nft) firewall_apply_nft || return $? ;;
+    iptables) firewall_apply_iptables || return $? ;;
     *) echo "no supported firewall backend found" >&2; return 1 ;;
   esac
   echo "firewall applied with $backend"
@@ -307,7 +317,7 @@ firewall_status_text() {
   ipv6_guard="no"
   if command -v ip6tables >/dev/null 2>&1 && ip6tables -S FORWARD 2>/dev/null | grep -q 'STARGATE_IPV6'; then
     ipv6_guard="yes"
-  elif command -v nft >/dev/null 2>&1 && nft list table inet stargate 2>/dev/null | grep -q 'meta nfproto ipv6 reject'; then
+  elif command -v nft >/dev/null 2>&1 && nft list table inet stargate 2>/dev/null | grep -Eq 'meta nfproto ipv6 reject|reject with icmpv6'; then
     ipv6_guard="yes"
   fi
   printf 'Backend: %s\n' "$backend"
@@ -331,7 +341,7 @@ firewall_status_json() {
   ipv6_guard=false
   if command -v ip6tables >/dev/null 2>&1 && ip6tables -S FORWARD 2>/dev/null | grep -q 'STARGATE_IPV6'; then
     ipv6_guard=true
-  elif command -v nft >/dev/null 2>&1 && nft list table inet stargate 2>/dev/null | grep -q 'meta nfproto ipv6 reject'; then
+  elif command -v nft >/dev/null 2>&1 && nft list table inet stargate 2>/dev/null | grep -Eq 'meta nfproto ipv6 reject|reject with icmpv6'; then
     ipv6_guard=true
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
