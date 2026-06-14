@@ -9,6 +9,37 @@ firewall_lan_ifaces() {
   printf '%s\n' $ifaces
 }
 
+firewall_lan_ipv6_status() {
+  dhcpv6="$(uci -q get dhcp.lan.dhcpv6 2>/dev/null || true)"
+  ra="$(uci -q get dhcp.lan.ra 2>/dev/null || true)"
+  ra_default="$(uci -q get dhcp.lan.ra_default 2>/dev/null || true)"
+  dns="$(uci -q get dhcp.lan.dns 2>/dev/null || true)"
+  printf 'dhcpv6=%s ra=%s ra_default=%s dns=%s' "${dhcpv6:-unset}" "${ra:-unset}" "${ra_default:-unset}" "${dns:-unset}"
+}
+
+firewall_apply_lan_ipv6_policy() {
+  [ "$lan_ipv6_policy" = "disable_on_transparent" ] || return 0
+  [ "$transparent_proxy" = "1" ] || return 0
+  command -v uci >/dev/null 2>&1 || {
+    echo "uci is required to apply LAN IPv6 policy" >&2
+    return 1
+  }
+
+  mkdir -p "$work_dir"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  [ -f /etc/config/dhcp ] && cp -a /etc/config/dhcp "$work_dir/dhcp.before-lan-ipv6-$stamp.bak"
+  [ -f /etc/config/network ] && cp -a /etc/config/network "$work_dir/network.before-lan-ipv6-$stamp.bak"
+
+  uci set dhcp.lan.dhcpv6='disabled'
+  uci set dhcp.lan.ra='disabled'
+  uci set dhcp.lan.ra_default='0'
+  uci -q delete dhcp.lan.dns || true
+  uci commit dhcp
+  [ -x /etc/init.d/odhcpd ] && /etc/init.d/odhcpd restart >/dev/null 2>&1 || true
+  [ -x /etc/init.d/dnsmasq ] && /etc/init.d/dnsmasq restart >/dev/null 2>&1 || true
+  echo "LAN IPv6 DHCP/RA disabled for Stargate transparent proxy"
+}
+
 firewall_clean_iptables() {
   command -v iptables >/dev/null 2>&1 || return 0
   iptables -t nat -S PREROUTING 2>/dev/null | grep 'STARGATE_' | sed 's/^-A /-D /' | while read -r rule; do
@@ -281,6 +312,7 @@ firewall_apply_rules() {
     iptables) firewall_apply_iptables || return $? ;;
     *) echo "no supported firewall backend found" >&2; return 1 ;;
   esac
+  firewall_apply_lan_ipv6_policy || return $?
   echo "firewall applied with $backend"
 }
 
@@ -327,6 +359,8 @@ firewall_status_text() {
   printf 'DNS redirect: %s:%s\n' "$dns_hijack" "$dns_hijack_port"
   printf 'QUIC block: %s\n' "$rules_block_quic"
   printf 'IPv6 guard: %s\n' "$ipv6_guard"
+  printf 'LAN IPv6 policy: %s\n' "$lan_ipv6_policy"
+  printf 'LAN IPv6 state: %s\n' "$(firewall_lan_ipv6_status)"
 }
 
 firewall_status_json() {
@@ -345,6 +379,7 @@ firewall_status_json() {
     ipv6_guard=true
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard"
-  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$message" | json_escape)"
+  lan_ipv6_state="$(firewall_lan_ipv6_status)"
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
+  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$(printf '%s' "$message" | json_escape)"
 }

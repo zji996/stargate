@@ -125,6 +125,7 @@ config rules 'rules'
 
 config safety 'safety'
 	option backup_on_apply '1'
+	option lan_ipv6_policy 'keep'
 EOF
   rm -f /etc/stargate/config.json.next
   uci_commit || true

@@ -101,6 +101,7 @@ load_config() {
   rules_private_direct="$(uci_get rules private_direct 1)"
   rules_block_quic="$(uci_get rules block_quic 1)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
+  lan_ipv6_policy="$(uci_get safety lan_ipv6_policy keep)"
 }
 
 validate_config() {
@@ -124,6 +125,7 @@ validate_config() {
   [ "$dns_hijack_port" -gt 0 ] && [ "$dns_hijack_port" -le 65535 ] || { echo "DNS hijack port must be between 1 and 65535" >&2; exit 1; }
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
+  case "$lan_ipv6_policy" in keep|disable_on_transparent) ;; *) echo "unsupported LAN IPv6 policy: $lan_ipv6_policy" >&2; exit 1 ;; esac
   case "$socks_port" in ''|*[!0-9]*) echo "SOCKS port must be numeric" >&2; exit 1 ;; esac
   case "$http_port" in ''|*[!0-9]*) echo "HTTP port must be numeric" >&2; exit 1 ;; esac
   case "$transparent_port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
