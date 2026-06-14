@@ -43,6 +43,7 @@ start_service() {
     echo "sing-box missing: $command" >&2
     return 1
   }
+  /usr/share/stargate/stargate.sh apply || return 1
   [ -f "$config" ] || {
     echo "config missing: $config" >&2
     return 1
@@ -54,7 +55,12 @@ start_service() {
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_close_instance
-  /usr/share/stargate/stargate.sh firewall-apply-rules >/dev/null 2>&1 || true
+  /usr/share/stargate/stargate.sh firewall-apply-rules >/dev/null || {
+    rc=$?
+    echo "failed to apply Stargate firewall rules" >&2
+    /usr/share/stargate/stargate.sh firewall-clean >/dev/null 2>&1 || true
+    return "$rc"
+  }
 }
 
 reload_service() {
