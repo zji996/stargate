@@ -11,12 +11,17 @@ backup_create() {
   if [ -d "$work_dir" ]; then
     find "$work_dir" -maxdepth 1 -type f \( -name '*.json' -o -name '*.env' -o -name 'env' \) -exec cp -a {} "$tmp_dir/etc/stargate/" \;
   fi
-  for file in "$rules_direct_rule_set" "$rules_proxy_rule_set"; do
+  {
+    printf '%s\n' "$rules_direct_rule_set" "$rules_proxy_rule_set"
+    [ -z "$rules_geoip_direct_rule_set" ] || printf '%s\n' "$rules_geoip_direct_rule_set"
+    printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n'
+  } | while IFS= read -r file; do
+    [ -n "$file" ] || continue
     if [ -f "$file" ]; then
       cp -a "$file" "$tmp_dir/usr/share/stargate/rules/$(basename "$file")"
     fi
     runtime_file="$(rule_set_runtime_path "$file")"
-    if [ -f "$runtime_file" ]; then
+    if [ "$runtime_file" != "$file" ] && [ -f "$runtime_file" ]; then
       cp -a "$runtime_file" "$tmp_dir/usr/share/stargate/rules/$(basename "$runtime_file")"
     fi
   done
@@ -37,10 +42,53 @@ backup_restore() {
   }
   tmp_dir="$(mktemp -d "$tmp_prefix-restore.XXXXXX")"
   trap 'rm -rf "$tmp_dir"' EXIT INT TERM
+  archive_list="$(tar -tzf "$archive")" || {
+    echo "invalid backup: cannot list archive" >&2
+    exit 1
+  }
+  unsafe_path="$(printf '%s\n' "$archive_list" | awk '
+    {
+      path = $0
+      sub(/\/$/, "", path)
+      if (path == "") next
+      if (path ~ /^\// || path ~ /(^|\/)\.\.(\/|$)/) { print $0; exit }
+      if (path == "manifest" ||
+          path == "etc" || path == "etc/config" || path == "etc/config/stargate" ||
+          path == "etc/stargate" || path ~ /^etc\/stargate\/[^\/]+$/ ||
+          path == "usr" || path == "usr/share" || path == "usr/share/stargate" ||
+          path == "usr/share/stargate/rules" || path ~ /^usr\/share\/stargate\/rules\/[^\/]+$/) next
+      print $0
+      exit
+    }
+  ')"
+  [ -z "$unsafe_path" ] || {
+    echo "invalid backup path: $unsafe_path" >&2
+    exit 1
+  }
   tar -C "$tmp_dir" -xzf "$archive"
 
+  [ -f "$tmp_dir/manifest" ] && [ ! -L "$tmp_dir/manifest" ] || {
+    echo "invalid backup: missing manifest" >&2
+    exit 1
+  }
+  grep -qx 'name=stargate' "$tmp_dir/manifest" && grep -qx 'version=1' "$tmp_dir/manifest" || {
+    echo "invalid backup: unsupported manifest" >&2
+    exit 1
+  }
   [ -f "$tmp_dir/etc/config/stargate" ] || {
     echo "invalid backup: missing etc/config/stargate" >&2
+    exit 1
+  }
+  [ ! -L "$tmp_dir/etc/config/stargate" ] || {
+    echo "invalid backup: configuration must be a regular file" >&2
+    exit 1
+  }
+  if find "$tmp_dir" -type l | grep -q .; then
+    echo "invalid backup: symbolic links are not allowed" >&2
+    exit 1
+  fi
+  uci -q -c "$tmp_dir/etc/config" show stargate >/dev/null 2>&1 || {
+    echo "invalid backup: malformed UCI configuration" >&2
     exit 1
   }
 
@@ -53,10 +101,12 @@ backup_restore() {
     find "$tmp_dir/etc/stargate" -maxdepth 1 -type f \( -name '*.json' -o -name '*.env' -o -name 'env' \) -exec cp -a {} /etc/stargate/ \;
   fi
   if [ -d "$tmp_dir/usr/share/stargate/rules" ]; then
-    find "$tmp_dir/usr/share/stargate/rules" -maxdepth 1 -type f -name '*.json' -exec cp -a {} /usr/share/stargate/rules/ \;
+    find "$tmp_dir/usr/share/stargate/rules" -maxdepth 1 -type f \( -name '*.json' -o -name '*.srs' \) -exec cp -a {} /usr/share/stargate/rules/ \;
   fi
   uci_commit || true
-  echo "backup restored"
+  echo "backup files restored"
+  "$0" apply-runtime
+  echo "backup restored and runtime synchronized"
 }
 
 reset_defaults() {
@@ -141,37 +191,119 @@ singbox_upgrade() {
   load_config
   install_dir="$(dirname "$singbox_bin")"
   backup_dir="/usr/share/stargate/backup"
-  backup_bin="$backup_dir/sing-box.bak"
-  tmp_bin="$tmp_prefix-sing-box.new"
+  backup_bin="$backup_dir/sing-box.bak.gz"
+  next_bin="$singbox_bin.next"
+  cleanup_upgrade_files() {
+    rm -f "$next_bin" "$backup_bin.next"
+  }
 
   mkdir -p "$install_dir" "$backup_dir"
-  cp -f "$upload" "$tmp_bin"
-  chmod 0755 "$tmp_bin"
-  "$tmp_bin" version >/dev/null 2>&1 || {
-    rm -f "$tmp_bin"
-    echo "uploaded file is not a runnable sing-box binary" >&2
+  cleanup_upgrade_files
+  trap cleanup_upgrade_files EXIT INT TERM
+  required_bytes="$(($(wc -c <"$upload") + 16777216))"
+  available_bytes="$(df -Pk "$install_dir" | awk 'NR == 2 { printf "%.0f", $4 * 1024 }')"
+  [ -n "$available_bytes" ] && [ "$available_bytes" -ge "$required_bytes" ] || {
+    echo "not enough flash space for atomic sing-box upgrade" >&2
     exit 1
   }
 
-  if [ -x "$singbox_bin" ]; then
-    cp -a "$singbox_bin" "$backup_bin"
+  cp -f "$upload" "$next_bin" || {
+    cleanup_upgrade_files
+    echo "failed to stage uploaded sing-box" >&2
+    exit 1
+  }
+  chmod 0755 "$next_bin"
+  "$next_bin" version >/dev/null 2>&1 || {
+    cleanup_upgrade_files
+    echo "uploaded file is not a runnable sing-box binary" >&2
+    exit 1
+  }
+  if [ -f "$config_file" ]; then
+    "$next_bin" check -c "$config_file" >/dev/null 2>&1 || {
+      cleanup_upgrade_files
+      echo "uploaded sing-box cannot load the current Stargate config" >&2
+      exit 1
+    }
   fi
-  cp -f "$tmp_bin" "$singbox_bin"
-  chmod 0755 "$singbox_bin"
-  rm -f "$tmp_bin"
+
+  was_running=0
+  /etc/init.d/stargate status >/dev/null 2>&1 && was_running=1
+  had_previous=0
+  if [ -x "$singbox_bin" ]; then
+    gzip -c "$singbox_bin" >"$backup_bin.next" && mv "$backup_bin.next" "$backup_bin" || {
+      cleanup_upgrade_files
+      echo "failed to store compressed sing-box backup" >&2
+      exit 1
+    }
+    had_previous=1
+  fi
+  mv "$next_bin" "$singbox_bin"
+  if [ "$was_running" = "1" ] && ! STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart; then
+    if [ "$had_previous" = "1" ] && [ -s "$backup_bin" ]; then
+      rm -f "$singbox_bin"
+      gzip -dc "$backup_bin" >"$next_bin" && chmod 0755 "$next_bin" && mv "$next_bin" "$singbox_bin"
+      STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart >/dev/null 2>&1 || true
+    else
+      rm -f "$singbox_bin"
+    fi
+    cleanup_upgrade_files
+    echo "sing-box restart failed; restored previous binary" >&2
+    exit 1
+  fi
+  cleanup_upgrade_files
+  trap - EXIT INT TERM
   "$singbox_bin" version | head -1
   echo "sing-box upgraded: $singbox_bin"
 }
 
 singbox_rollback() {
   load_config
-  backup_bin="/usr/share/stargate/backup/sing-box.bak"
-  [ -x "$backup_bin" ] || {
+  backup_bin="/usr/share/stargate/backup/sing-box.bak.gz"
+  [ -s "$backup_bin" ] || {
     echo "sing-box backup not found: $backup_bin" >&2
     exit 1
   }
-  cp -a "$backup_bin" "$singbox_bin"
-  chmod 0755 "$singbox_bin"
+  gzip -t "$backup_bin" >/dev/null 2>&1 || {
+    echo "sing-box backup is corrupt: $backup_bin" >&2
+    exit 1
+  }
+  was_running=0
+  /etc/init.d/stargate status >/dev/null 2>&1 && was_running=1
+  current_backup="$tmp_prefix-sing-box.rollback-from.gz"
+  next_bin="$singbox_bin.next"
+  cleanup_rollback_files() {
+    rm -f "$current_backup" "$next_bin"
+  }
+  cleanup_rollback_files
+  trap cleanup_rollback_files EXIT INT TERM
+  [ ! -x "$singbox_bin" ] || gzip -c "$singbox_bin" >"$current_backup"
+  gzip -dc "$backup_bin" >"$next_bin"
+  chmod 0755 "$next_bin"
+  "$next_bin" version >/dev/null 2>&1 || {
+    rm -f "$current_backup" "$next_bin"
+    echo "backup sing-box is not runnable" >&2
+    exit 1
+  }
+  if [ -f "$config_file" ]; then
+    "$next_bin" check -c "$config_file" >/dev/null 2>&1 || {
+      rm -f "$current_backup" "$next_bin"
+      echo "backup sing-box cannot load the current Stargate config" >&2
+      exit 1
+    }
+  fi
+  mv "$next_bin" "$singbox_bin"
+  if [ "$was_running" = "1" ] && ! STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart; then
+    if [ -s "$current_backup" ]; then
+      rm -f "$singbox_bin"
+      gzip -dc "$current_backup" >"$next_bin" && chmod 0755 "$next_bin" && mv "$next_bin" "$singbox_bin"
+      STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart >/dev/null 2>&1 || true
+    fi
+    rm -f "$current_backup" "$next_bin"
+    echo "sing-box rollback restart failed; restored current binary" >&2
+    exit 1
+  fi
+  cleanup_rollback_files
+  trap - EXIT INT TERM
   "$singbox_bin" version | head -1
   echo "sing-box rolled back: $singbox_bin"
 }
