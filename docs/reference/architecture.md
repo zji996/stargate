@@ -112,7 +112,7 @@ LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直�
 - `geoip-cn.srs` 作为直连 GeoIP rule-set；`geoip-google.srs`、`geoip-facebook.srs`、`geoip-twitter.srs`、`geoip-telegram.srs` 作为代理 GeoIP rule-set。它们来自 `https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip`，直接以 sing-box binary rule-set 形式保存。
 - 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成优先级高于上游列表的 route rule。
 
-规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件，也不随包携带 clash-rules、GeoIP 或去广告列表；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
+规则更新是显式动作，不在启动或生成配置时自动联网。全部列表会先下载到临时目录，direct/proxy 也会先完成编译，所有下载与编译成功后才安装正式文件，避免网络失败留下新旧混合规则。更新成功且 Stargate 正在运行时会同步执行 `apply-runtime`，让 sing-box 本地 rule-set 和防火墙直连集合加载新文件。Stargate 不内置离线 fallback 规则文件，也不随包携带 clash-rules、GeoIP 或去广告列表；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
 
 Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set、GeoIP direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
 

@@ -105,24 +105,41 @@ geoip_remote_name() {
 }
 
 fetch_geoip_rule_set() {
-  remote_name="$(geoip_remote_name "$1")"
-  fetch_rule_list "${rules_geoip_base_url%/}/$remote_name" "$1"
-  [ -s "$1" ] || { echo "downloaded GeoIP rule-set is empty: $remote_name" >&2; exit 1; }
+  target="$1"
+  output="${2:-$1}"
+  remote_name="$(geoip_remote_name "$target")"
+  fetch_rule_list "${rules_geoip_base_url%/}/$remote_name" "$output"
+  [ -s "$output" ] || { echo "downloaded GeoIP rule-set is empty: $remote_name" >&2; exit 1; }
 }
 
 update_geoip_rule_sets() {
+  stage_dir="$1"
+  manifest="$2"
   if [ -n "$rules_geoip_direct_rule_set" ]; then
-    mkdir -p "$(dirname "$rules_geoip_direct_rule_set")"
-    fetch_geoip_rule_set "$rules_geoip_direct_rule_set"
+    staged="$stage_dir/geoip-direct.srs"
+    fetch_geoip_rule_set "$rules_geoip_direct_rule_set" "$staged"
+    printf '%s\t%s\n' "$staged" "$rules_geoip_direct_rule_set" >>"$manifest"
   fi
+  geoip_index=1
   printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_rule_set; do
     [ -n "$geoip_rule_set" ] || continue
-    mkdir -p "$(dirname "$geoip_rule_set")"
-    fetch_geoip_rule_set "$geoip_rule_set"
+    staged="$stage_dir/geoip-proxy-$geoip_index.srs"
+    fetch_geoip_rule_set "$geoip_rule_set" "$staged"
+    printf '%s\t%s\n' "$staged" "$geoip_rule_set" >>"$manifest"
+    geoip_index=$((geoip_index + 1))
   done
 }
 
-rules_update() {
+install_staged_rule_sets() {
+  manifest="$1"
+  while IFS="$(printf '\t')" read -r staged target; do
+    [ -n "$staged" ] && [ -n "$target" ] || continue
+    mkdir -p "$(dirname "$target")"
+    cp -f "$staged" "$target"
+  done <"$manifest"
+}
+
+rules_update_core() {
   load_config
   [ "$rules_source" = "loyalsoldier" ] || {
     echo "unsupported rules source: $rules_source" >&2
@@ -135,17 +152,51 @@ rules_update() {
 
   tmp_dir="$(mktemp -d)"
   trap 'rm -rf "$tmp_dir"' EXIT HUP INT TERM
+  stage_dir="$tmp_dir/staged"
+  install_manifest="$tmp_dir/install.manifest"
+  mkdir -p "$stage_dir"
+  : >"$install_manifest"
   base="${rules_source_base_url%/}"
   for name in direct private proxy gfw tld-not-cn cncidr telegramcidr lancidr; do
     fetch_rule_list "$base/$name.txt" "$tmp_dir/$name.txt"
     [ -s "$tmp_dir/$name.txt" ] || { echo "downloaded $name list is empty" >&2; exit 1; }
   done
-  write_rule_set_json "$tmp_dir/direct.txt $tmp_dir/private.txt" "$tmp_dir/cncidr.txt $tmp_dir/lancidr.txt" "$rules_direct_rule_set"
-  write_rule_set_json "$tmp_dir/proxy.txt $tmp_dir/gfw.txt $tmp_dir/tld-not-cn.txt" "$tmp_dir/telegramcidr.txt" "$rules_proxy_rule_set"
-  compile_rule_set "$rules_direct_rule_set"
-  compile_rule_set "$rules_proxy_rule_set"
-  update_geoip_rule_sets
+  staged_direct="$stage_dir/direct.json"
+  staged_proxy="$stage_dir/proxy.json"
+  write_rule_set_json "$tmp_dir/direct.txt $tmp_dir/private.txt" "$tmp_dir/cncidr.txt $tmp_dir/lancidr.txt" "$staged_direct"
+  write_rule_set_json "$tmp_dir/proxy.txt $tmp_dir/gfw.txt $tmp_dir/tld-not-cn.txt" "$tmp_dir/telegramcidr.txt" "$staged_proxy"
+  compile_rule_set "$staged_direct"
+  compile_rule_set "$staged_proxy"
+  printf '%s\t%s\n' "$staged_direct" "$rules_direct_rule_set" >>"$install_manifest"
+  printf '%s\t%s\n' "$(rule_set_runtime_path "$staged_direct")" "$(rule_set_runtime_path "$rules_direct_rule_set")" >>"$install_manifest"
+  printf '%s\t%s\n' "$staged_proxy" "$rules_proxy_rule_set" >>"$install_manifest"
+  printf '%s\t%s\n' "$(rule_set_runtime_path "$staged_proxy")" "$(rule_set_runtime_path "$rules_proxy_rule_set")" >>"$install_manifest"
+  update_geoip_rule_sets "$stage_dir" "$install_manifest"
+  install_staged_rule_sets "$install_manifest"
   echo "Rules updated."
+  if /etc/init.d/stargate status >/dev/null 2>&1; then
+    echo "Reloading Stargate with updated rules."
+    "$0" apply-runtime
+  fi
+}
+
+rules_update() {
+  if [ "${STARGATE_RULE_UPDATE_MANAGED:-0}" = "1" ]; then
+    rules_update_core
+    return
+  fi
+
+  printf 'running\n' >"$rules_update_status_file"
+  printf 'Started at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$rules_update_log_file"
+  if (rules_update_core); then
+    printf 'Finished at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$rules_update_log_file"
+    printf 'success\n' >"$rules_update_status_file"
+  else
+    code="$?"
+    printf 'Finished at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$rules_update_log_file"
+    printf 'failed (%s)\n' "$code" >"$rules_update_status_file"
+    return "$code"
+  fi
   rules_status
 }
 
@@ -168,7 +219,7 @@ rules_update_start() {
 
   (
     trap '' HUP
-    if "$0" rules-update >>"$rules_update_log_file" 2>&1; then
+    if STARGATE_RULE_UPDATE_MANAGED=1 "$0" rules-update >>"$rules_update_log_file" 2>&1; then
       printf 'Finished at %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >>"$rules_update_log_file"
       printf 'success\n' >"$rules_update_status_file"
     else
