@@ -254,7 +254,7 @@ firewall_apply_nft() {
     elements = { $direct_ip_set }
   }
 "
-    direct_ip_return="    iifname { $iface_set } ip daddr @direct4 return"
+    direct_ip_return="    iifname { $iface_set } ip daddr @direct4 counter return comment \"Stargate direct bypass\""
   fi
   firewall_clean_nft
   tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
@@ -262,17 +262,17 @@ firewall_apply_nft() {
 table inet stargate {
 $direct_set_block
   chain prerouting {
-    type nat hook prerouting priority dstnat; policy accept;
-    iifname { $iface_set } udp dport 53 redirect to :$dns_hijack_port
-    iifname { $iface_set } tcp dport 53 redirect to :$dns_hijack_port
+    type nat hook prerouting priority dstnat - 10; policy accept;
+    iifname { $iface_set } udp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
+    iifname { $iface_set } tcp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
 $direct_ip_return
-    iifname { $iface_set } meta l4proto tcp redirect to :$transparent_port
+    iifname { $iface_set } meta l4proto tcp counter redirect to :$transparent_port comment "Stargate transparent redirect"
   }
   chain forward {
-    type filter hook forward priority filter; policy accept;
-    iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } return
-    iifname { $iface_set } meta nfproto ipv6 reject
-    iifname { $iface_set } udp dport 443 reject
+    type filter hook forward priority filter - 10; policy accept;
+    iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } counter return comment "Stargate local IPv6"
+    iifname { $iface_set } meta nfproto ipv6 counter reject comment "Stargate IPv6 guard"
+    iifname { $iface_set } udp dport 443 counter reject comment "Stargate QUIC block"
   }
 }
 EOF
@@ -280,7 +280,7 @@ EOF
     sed -i '/dport 53/d' "$tmp_nft"
   fi
   if [ "$rules_block_quic" != "1" ]; then
-    sed -i '/udp dport 443 reject/d' "$tmp_nft"
+    sed -i '/Stargate QUIC block/d' "$tmp_nft"
   fi
   nft -f "$tmp_nft"
   rc=$?
@@ -336,6 +336,18 @@ firewall_clean() {
   echo "firewall cleaned"
 }
 
+firewall_nft_rule_packets() {
+  marker="$1"
+  nft list table inet stargate 2>/dev/null | awk -v marker="$marker" '
+    index($0, "comment \"" marker "\"") {
+      for (i = 1; i <= NF; i++) {
+        if ($i == "packets" && $(i + 1) ~ /^[0-9]+$/) total += $(i + 1)
+      }
+    }
+    END { printf "%.0f", total + 0 }
+  '
+}
+
 firewall_status_text() {
   load_config
   backend="$(firewall_backend)"
@@ -361,6 +373,12 @@ firewall_status_text() {
   printf 'IPv6 guard: %s\n' "$ipv6_guard"
   printf 'LAN IPv6 policy: %s\n' "$lan_ipv6_policy"
   printf 'LAN IPv6 state: %s\n' "$(firewall_lan_ipv6_status)"
+  if [ "$backend" = "nft" ] && [ "$active" = "yes" ]; then
+    printf 'Rule packets: DNS=%s transparent=%s direct-bypass=%s\n' \
+      "$(firewall_nft_rule_packets "Stargate DNS redirect")" \
+      "$(firewall_nft_rule_packets "Stargate transparent redirect")" \
+      "$(firewall_nft_rule_packets "Stargate direct bypass")"
+  fi
 }
 
 firewall_status_json() {
@@ -380,6 +398,14 @@ firewall_status_json() {
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
   lan_ipv6_state="$(firewall_lan_ipv6_status)"
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
-  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$(printf '%s' "$message" | json_escape)"
+  dns_packets=0
+  transparent_packets=0
+  direct_bypass_packets=0
+  if [ "$backend" = "nft" ] && [ "$active" = "true" ]; then
+    dns_packets="$(firewall_nft_rule_packets "Stargate DNS redirect")"
+    transparent_packets="$(firewall_nft_rule_packets "Stargate transparent redirect")"
+    direct_bypass_packets="$(firewall_nft_rule_packets "Stargate direct bypass")"
+  fi
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; Rule packets: DNS=$dns_packets transparent=$transparent_packets direct-bypass=$direct_bypass_packets; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
+  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","dns_packets":%s,"transparent_packets":%s,"direct_bypass_packets":%s,"message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$dns_packets" "$transparent_packets" "$direct_bypass_packets" "$(printf '%s' "$message" | json_escape)"
 }

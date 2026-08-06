@@ -129,6 +129,8 @@ redirect 模式只处理 IPv4 TCP。它不会代理普通 UDP，也不会代理 
 
 fw4/nftables 上不要照搬 iptables 写法。透明代理全 TCP 匹配应写成 `meta l4proto tcp redirect to :PORT`，不能写成 `tcp redirect`。大量直连 CIDR 应放进命名 interval set；上游 CIDR 可能重叠，set 需要 `auto-merge`，否则会报 `conflicting intervals specified`。
 
+Stargate 的 nft PREROUTING 使用 `dstnat - 10`。一些固件会创建 `inet dnsmasq` 并以 `dstnat - 5` 把所有 UDP/53 提前重定向到 dnsmasq，PassWall2 也可能使用 `dstnat - 1`；如果 Stargate 仍使用默认 `dstnat`，页面会显示防火墙 Active，但 DNS 请求实际永远到不了 sing-box，受污染的解析地址随后会让透明代理连接错误目标。排障时应查看 `nft -a list table inet stargate` 的规则计数器，确认 DNS redirect 和 transparent redirect 都有命中。
+
 防火墙应用失败必须向 `apply-runtime` 透传非零退出码。否则会出现 UCI 已勾选、sing-box 已运行，但 `nft list table inet stargate` 不存在的半成功状态；Overview 也会让人误以为透明代理已接管。
 
 直连 CIDR 在 iptables/ipset 可用时会进入 `STARGATE_DIRECT4` 绕过集合。能在 IP 层确定直连的流量应尽量绕过 sing-box，减少日志噪声和路由器负载。
