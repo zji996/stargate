@@ -48,14 +48,14 @@ function dash.cfgvalue()
   local checking = ui_text("Check...", "检测中...")
   local problem = ui_text("Problem detected!", "检测异常")
   local direct_outlet = ui_text("Direct local outlet", "本机直连出口")
-  local transparent_outlet = ui_text("Stargate transparent path", "Stargate 透明代理路径")
   local local_outlet = ui_text("Stargate local proxy path", "Stargate 本机代理路径")
+  local active_forwarding = ui_text("Stargate local proxy path (transparent forwarding active)", "Stargate 本机代理路径（透明转发已启用）")
   local inactive_forwarding = ui_text("Stargate local proxy path (forwarding inactive)", "Stargate 本机代理路径（透明转发未生效）")
   local stopped_outlet = ui_text("Stargate is not running", "Stargate 未运行")
   local initial_probe_path = stopped_outlet
   if running == "running" then
     if transparent_enabled == "1" and firewall_active == "1" then
-      initial_probe_path = transparent_outlet
+      initial_probe_path = active_forwarding
     elseif transparent_enabled == "1" then
       initial_probe_path = inactive_forwarding
     else
@@ -139,7 +139,7 @@ function dash.cfgvalue()
     '//<![CDATA[',
     'function stargateProbeClass(ms, ok){if(!ok)return "stargate-bad";if(ms<800)return "stargate-ok";if(ms<1800)return "stargate-warn";return "stargate-bad";}',
     'function stargateSetProbe(target, text, note, cls){var s=document.getElementById("stargate-"+target+"-status");var n=document.getElementById("stargate-"+target+"-note");if(s){s.className="stargate-probe-value "+cls;s.innerHTML=text;}if(n){n.innerHTML=note||"";}}',
-    'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. initial_probe_path .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var mode=rv.mode==="transparent"?"' .. transparent_outlet .. '":(rv.mode==="local"?(rv.firewall_active===false&&rv.mode_label&&rv.mode_label.indexOf("inactive")>=0?"' .. inactive_forwarding .. '":"' .. local_outlet .. '"):(rv.mode==="stopped"?"' .. stopped_outlet .. '":"' .. direct_outlet .. '"));var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note=mode+" / HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" / "+note,"stargate-bad");}});}',
+    'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. initial_probe_path .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var mode=rv.mode==="local"?(rv.firewall_active===false&&rv.mode_label&&rv.mode_label.indexOf("inactive")>=0?"' .. inactive_forwarding .. '":(rv.mode_label&&rv.mode_label.indexOf("forwarding active")>=0?"' .. active_forwarding .. '":"' .. local_outlet .. '")):(rv.mode==="stopped"?"' .. stopped_outlet .. '":"' .. direct_outlet .. '");var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note=mode+" / HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" / "+note,"stargate-bad");}});}',
     'function stargateRuntimeCheckboxes(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");var row=document.getElementById("cbi-stargate-inbound-transparent_proxy");if(!local||!transparent)return;var on=!!local.checked;if(!on)transparent.checked=false;if(row){if(on)row.classList.remove("stargate-disabled");else row.classList.add("stargate-disabled");}}',
     'document.addEventListener("DOMContentLoaded",function(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");if(local)local.addEventListener("change",stargateRuntimeCheckboxes);if(transparent)transparent.addEventListener("change",function(){if(local&&!local.checked)this.checked=false;stargateRuntimeCheckboxes();});stargateRuntimeCheckboxes();});',
     '//]]>',

@@ -38,7 +38,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 2026-05-10 测试路由器上系统已有 `/usr/bin/sing-box`，PassWall2 也配置使用该路径。Stargate 应共用系统 sing-box 二进制，但保持独立配置和服务。
 - 2026-05-10 在测试路由器上做过隔离测试：`sing-box check` 通过，短时运行只监听临时本机端口，没有接管透明代理、DNS 或防火墙。
 - 2026-05-11 在路由器上部署 LuCI 时发现该固件不支持 Lua controller 的 `view()` 入口，已改用 `cbi()` + `luasrc/model/cbi/stargate/client/*.lua`。服务菜单已正常出现。
-- Overview 状态面板参考 PassWall2 的点击式检测体验；未运行时检测会明确显示 Stargate 未运行。Stargate 运行时连接检测走本地 HTTP 入站以体现代理后的可达状态，只有透明代理已开启且转发规则实际 Active 时才标记为透明代理路径。检测结果返回 HTTP 状态、延迟、出口 dev/src 和检测路径。
+- Overview 状态面板参考 PassWall2 的点击式检测体验；未运行时检测会明确显示 Stargate 未运行。Stargate 运行时连接检测走本地 HTTP 入站，只验证节点和本机代理可达性，不再把“防火墙表存在”误标为已经走过透明代理。透明转发是否真正承载 LAN 流量应结合 firewall status 中的 DNS、transparent 和 direct-bypass 规则计数判断。
 - Overview 保留状态、连接检测和勾选式启用入口：先勾选本机代理，之后才允许勾选透明代理，并通过 LuCI 右下角保存应用提交。透明代理默认仍关闭，不会在未显式勾选时接管网络。
 - Overview 保存后会调用统一的运行态同步入口：`global.enabled=0` 时停止 Stargate、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 时按当前本机/透明代理配置生成配置、校验并启动。init 脚本本身也会尊重 `global.enabled`，避免重启后绕过 LuCI 重新拉起代理。
 - 日志独立为 Logs 页；Maintenance（维护）页分为 `sing-box 设置` 和 `备份还原` 两块，前者只保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 的备份还原体验，提供下载备份、恢复备份、恢复默认配置和保留生成配置回滚。
@@ -60,8 +60,8 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 当前 S20M 测试路由器运行 ImmortalWrt `25.12-SNAPSHOT r38139-45f7c116ea`、kernel `6.12.91`、board `clx,s20m`，防火墙为 fw4/nftables，LAN 为 `192.168.6.1/24`，WAN 从上级 `192.168.1.1` 获取地址。
 - 该固件使用 `apk`，不是 `opkg`。LuCI 软件包页面已适配 apk；后续缺包用 `apk add`，不要混装 opkg，也不要做全量包升级。
 - Stargate LuCI 版已部署到实机；`sing-box` 由系统 apk 安装到 `/usr/bin/sing-box`，当前版本 `1.12.25-r1`。LuCI 服务菜单应出现 Stargate，后端 `/usr/share/stargate/stargate.sh status` 正常返回。
-- 当前已配置 AnyTLS 节点，并已更新基础规则。Stargate 处于 enabled/running，透明代理为 redirect 模式，nftables 表 `inet stargate` 已应用；Baidu、Google、GitHub 连接检测均通过 Stargate transparent path。
-- 防火墙后端识别为 `nft`。nft 规则生成使用 `meta l4proto tcp redirect to :PORT`，直连 CIDR 使用 interval set + `auto-merge`，状态以 `/usr/share/stargate/stargate.sh firewall-status` 和 `nft list table inet stargate` 共同确认。
+- 当前已配置 AnyTLS 节点，并已更新基础规则。Stargate 处于 enabled/running，透明代理为 redirect 模式，nftables 表 `inet stargate` 已应用；Baidu、Google、GitHub 本机 HTTP 代理检测通过，LAN 透明路径另以规则计数和局域网设备实测确认。
+- 防火墙后端识别为 `nft`。nft 规则生成使用 `meta l4proto tcp redirect to :PORT`，直连 CIDR 使用 interval set + `auto-merge`。Stargate 的 PREROUTING 使用 `dstnat - 10`，早于固件常见的 dnsmasq DNS 劫持和其他代理入口；关键规则带计数器，状态以 `/usr/share/stargate/stargate.sh firewall-status` 和 `nft list table inet stargate` 共同确认。
 - 实机已做低风险精简：停用文件共享、Docker、OpenClash、Cloudflared、EasyTier、HAProxy、NFS 等非基础服务；保留 network、firewall、dnsmasq、odhcpd、dropbear、uhttpd、rpcd、时间同步和 MTK/系统服务。
 - 路由器本机 DNS 已固定补充 dnsmasq 上游 `223.5.5.5` 和 `119.29.29.29`，避免新镜像只写入 IPv6 link-local resolver 时解析失败。
 - 近期备份位置：优化前 `/root/stargate-preopt-20260614-002212`，Stargate 安装前 `/root/stargate-install-pre-20260614-003106`。S20M nftables 镜像构建资料见 `tools/s20m-nftables/` 和 `docs/reference/s20m-nftables-build.md`。

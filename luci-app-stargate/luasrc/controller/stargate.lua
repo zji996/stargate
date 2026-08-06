@@ -128,8 +128,7 @@ function connect_status()
     proxy_arg = "--proxy " .. shellquote("http://" .. http_listen .. ":" .. http_port)
 
     if transparent and firewall_active then
-      proxy_mode = "transparent"
-      proxy_label = "Stargate transparent path"
+      proxy_label = "Stargate local proxy path (transparent forwarding active)"
     elseif transparent then
       proxy_label = "Stargate local proxy path (forwarding inactive)"
     end

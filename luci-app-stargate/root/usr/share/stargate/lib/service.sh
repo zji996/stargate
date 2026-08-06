@@ -218,7 +218,7 @@ probe_url() {
     ''|0.0.0.0|::) proxy_host="127.0.0.1" ;;
   esac
   if [ "$transparent_proxy" = "1" ] && [ "$firewall_active" = "1" ]; then
-    mode="Stargate transparent path"
+    mode="Stargate local proxy path (transparent forwarding active)"
   elif [ "$transparent_proxy" = "1" ]; then
     mode="Stargate local proxy path (forwarding inactive)"
   fi
