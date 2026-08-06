@@ -281,6 +281,11 @@ apply_config() {
   generated="$(generate_config)"
   next_file="$generated"
   check_next
+  if [ -f "$config_file" ] && cmp -s "$next_file" "$config_file"; then
+    rm -f "$next_file"
+    echo "config unchanged: $config_file"
+    return 0
+  fi
   if [ "$backup_on_apply" = "1" ] && [ -f "$config_file" ]; then
     cp -a "$config_file" "$backup_file"
   fi
@@ -309,7 +314,7 @@ restore_backup_config() {
 rollback_config() {
   restore_backup_config
   if pgrep -af "sing-box run -c" 2>/dev/null | grep -F -- "$config_file" >/dev/null 2>&1; then
-    /etc/init.d/stargate restart
+    STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart
     echo "service restarted with backup config"
   else
     echo "service is not running; backup config restored"
@@ -318,14 +323,14 @@ rollback_config() {
 
 restart_service_with_rollback() {
   if /etc/init.d/stargate status >/dev/null 2>&1; then
-    restart_output="$(/etc/init.d/stargate restart 2>&1)" && {
+    restart_output="$(STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart 2>&1)" && {
       [ -z "$restart_output" ] || printf '%s\n' "$restart_output"
       echo "service restarted"
       return 0
     }
   else
     /etc/init.d/stargate stop >/dev/null 2>&1 || true
-    if /etc/init.d/stargate start; then
+    if STARGATE_CONFIG_READY=1 /etc/init.d/stargate start; then
       echo "service started"
       return 0
     fi
@@ -338,13 +343,13 @@ restart_service_with_rollback() {
   echo "service restart failed; trying rollback" >&2
   restore_backup_config || return 1
   if /etc/init.d/stargate status >/dev/null 2>&1; then
-    /etc/init.d/stargate restart
+    STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart
     echo "service restarted"
     return 0
   fi
 
   /etc/init.d/stargate stop >/dev/null 2>&1 || true
-  if /etc/init.d/stargate start; then
+  if STARGATE_CONFIG_READY=1 /etc/init.d/stargate start; then
     echo "rollback applied and service started"
     return 0
   fi

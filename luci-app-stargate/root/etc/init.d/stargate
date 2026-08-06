@@ -43,7 +43,9 @@ start_service() {
     echo "sing-box missing: $command" >&2
     return 1
   }
-  /usr/share/stargate/stargate.sh apply || return 1
+  if [ "${STARGATE_CONFIG_READY:-0}" != "1" ]; then
+    /usr/share/stargate/stargate.sh apply || return 1
+  fi
   [ -f "$config" ] || {
     echo "config missing: $config" >&2
     return 1

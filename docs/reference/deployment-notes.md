@@ -133,6 +133,8 @@ Stargate 的 nft PREROUTING 使用 `dstnat - 10`。一些固件会创建 `inet d
 
 防火墙应用失败必须向 `apply-runtime` 透传非零退出码。否则会出现 UCI 已勾选、sing-box 已运行，但 `nft list table inet stargate` 不存在的半成功状态；Overview 也会让人误以为透明代理已接管。
 
+配置应用脚本生成并校验配置后，会以 `STARGATE_CONFIG_READY=1` 调用 init 启动或重启。init 在普通开机启动时仍会按 UCI 生成配置，但收到该标记时只校验现有配置，避免一次保存触发两次 apply 并把 `config.json.bak` 覆盖为当前配置。显式 rollback 重启也必须携带同一标记，否则 init 会立即按当前 UCI 重新生成配置并撤销回滚。
+
 直连 CIDR 在 iptables/ipset 可用时会进入 `STARGATE_DIRECT4` 绕过集合。能在 IP 层确定直连的流量应尽量绕过 sing-box，减少日志噪声和路由器负载。
 
 iptables 后端应额外保护透明代理入站端口，拒绝 LAN 设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是路由器 transparent port，不应被这条防护影响；直连该端口会让 sing-box redirect 入站拿不到原始目标，产生 `get redirect destination: no such file or directory`。
