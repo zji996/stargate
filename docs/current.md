@@ -16,6 +16,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 第一阶段优先支持 AnyTLS URI。
 - 配置生成后必须先执行 `sing-box check`，通过后再切换。
 - 新配置先写入 `.next`，正式替换前备份上一份配置。
+- 生成结果与当前配置相同时不重复替换或覆盖备份；脚本已经准备好配置后重启 init 时不会再次生成，避免把上一份可回滚配置覆盖成当前配置。
 - 启动失败时尝试回滚上一份配置。
 - DNS 优先写 sing-box 内部 DNS；DNS 重定向默认开启，但只有透明代理防火墙规则应用时才接管受管设备的 53 端口。
 - 默认不接管全局网络，不启用透明代理。
@@ -41,10 +42,11 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - Overview 状态面板参考 PassWall2 的点击式检测体验；未运行时检测会明确显示 Stargate 未运行。Stargate 运行时连接检测走本地 HTTP 入站，只验证节点和本机代理可达性，不再把“防火墙表存在”误标为已经走过透明代理。透明转发是否真正承载 LAN 流量应结合 firewall status 中的 DNS、transparent 和 direct-bypass 规则计数判断。
 - Overview 保留状态、连接检测和勾选式启用入口：先勾选本机代理，之后才允许勾选透明代理，并通过 LuCI 右下角保存应用提交。透明代理默认仍关闭，不会在未显式勾选时接管网络。
 - Overview 保存后会调用统一的运行态同步入口：`global.enabled=0` 时停止 Stargate、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 时按当前本机/透明代理配置生成配置、校验并启动。init 脚本本身也会尊重 `global.enabled`，避免重启后绕过 LuCI 重新拉起代理。
-- 日志独立为 Logs 页；Maintenance（维护）页分为 `sing-box 设置` 和 `备份还原` 两块，前者只保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 的备份还原体验，提供下载备份、恢复备份、恢复默认配置和保留生成配置回滚。
+- 日志独立为 Logs 页；Maintenance（维护）页分为 `sing-box 设置` 和 `备份还原` 两块。备份包含 UCI、生成配置、direct/proxy 源文件与编译规则以及全部 GeoIP `.srs`；恢复前校验 manifest、归档路径、文件类型和 UCI 语法，恢复后通过 `apply-runtime` 同步服务与防火墙。sing-box 升级使用压缩回滚副本，写入前检查 overlay 空间，新文件在同目录完成版本和配置检查后原子替换；运行中替换失败时自动恢复旧二进制。
 - Logs 页默认过滤 sing-box 直连出站超时噪声并移除 ANSI 颜色码，同时保留原始日志视图和清理系统日志入口。
 - 未配置当前节点时，Overview 会显示阻塞提示；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
 - Node 页开始提供轻量节点列表，支持手动添加 AnyTLS、通过 `anytls://` 链接添加、编辑节点、使用节点和删除节点。新增和链接添加入口位于节点列表上方，节点编辑和“使用此节点”跟随列表行。第一版不做订阅和多协议导入。
+- 节点和入站端口在后端统一校验为 `1..65535`；AnyTLS URI 的密码、SNI 和标签按 URI 百分号编码解码，字面量 `+` 不会被错误转换为空格。
 - DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Google 域名 DoH `https://dns.google/dns-query`，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。远端 DoH 会显式使用 `direct-dns` 解析自身域名，再通过代理出站拨号，避免 `dns.google` 的自举连接按直连拨出。DNS 重定向默认开启，透明代理防火墙规则应用后会把受管设备的 53 端口导入 sing-box DNS。
 - Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
 - Rules 页改为 Loyalsoldier clash-rules + sing-box GeoIP rule-set 基础规则体系，不随包内置规则数据，也不内置去广告规则。用户需要显式更新规则，后端将 `direct/private/cncidr/lancidr` 合成为直连域名/CIDR rule-set，将 `proxy/gfw/tld-not-cn/telegramcidr` 合成为代理域名/CIDR rule-set，并额外下载 MetaCubeX 的 `geoip-cn/google/facebook/twitter/telegram` `.srs` 供裸 IP 分流使用；页面只暴露黑名单/白名单模式和少量用户覆盖规则，默认出站与代理出站由模式自动决定。
