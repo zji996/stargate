@@ -17,6 +17,21 @@ bool_value() {
   esac
 }
 
+validate_port_value() {
+  value="$1"
+  label="$2"
+  case "$value" in
+    ''|*[!0-9]*)
+      echo "$label must be numeric" >&2
+      return 1
+      ;;
+  esac
+  [ "$value" -gt 0 ] && [ "$value" -le 65535 ] || {
+    echo "$label must be between 1 and 65535" >&2
+    return 1
+  }
+}
+
 uci_get() {
   if [ -n "${UCI_CONFIG_DIR:-}" ]; then
     uci -q -c "$UCI_CONFIG_DIR" get "$app.$1.$2" 2>/dev/null || printf '%s' "$3"
@@ -121,14 +136,13 @@ validate_config() {
   case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
-  case "$dns_hijack_port" in ''|*[!0-9]*) echo "DNS hijack port must be numeric" >&2; exit 1 ;; esac
-  [ "$dns_hijack_port" -gt 0 ] && [ "$dns_hijack_port" -le 65535 ] || { echo "DNS hijack port must be between 1 and 65535" >&2; exit 1; }
+  validate_port_value "$dns_hijack_port" "DNS hijack port" || exit 1
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
   case "$lan_ipv6_policy" in keep|disable_on_transparent) ;; *) echo "unsupported LAN IPv6 policy: $lan_ipv6_policy" >&2; exit 1 ;; esac
-  case "$socks_port" in ''|*[!0-9]*) echo "SOCKS port must be numeric" >&2; exit 1 ;; esac
-  case "$http_port" in ''|*[!0-9]*) echo "HTTP port must be numeric" >&2; exit 1 ;; esac
-  case "$transparent_port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
+  validate_port_value "$socks_port" "SOCKS port" || exit 1
+  validate_port_value "$http_port" "HTTP port" || exit 1
+  validate_port_value "$transparent_port" "transparent proxy port" || exit 1
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     direct_runtime_rule_set="$(rule_set_runtime_path "$rules_direct_rule_set")"
     proxy_runtime_rule_set="$(rule_set_runtime_path "$rules_proxy_rule_set")"
@@ -231,7 +245,6 @@ uri_decode() {
   if command -v lua >/dev/null 2>&1; then
     lua - "$raw" <<'LUA'
 local s = arg[1] or ""
-s = s:gsub("+", " ")
 s = s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
 io.write(s)
 LUA

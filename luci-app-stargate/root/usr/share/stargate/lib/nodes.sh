@@ -21,9 +21,7 @@ validate_node_fields() {
     echo "node password is required" >&2
     exit 1
   }
-  case "${node_port:-443}" in
-    ''|*[!0-9]*) echo "node port must be numeric" >&2; exit 1 ;;
-  esac
+  validate_port_value "${node_port:-443}" "node port" || exit 1
 }
 
 node_add_values() {
@@ -194,4 +192,3 @@ node_delete() {
   uci_commit
   echo "node deleted: $id"
 }
-

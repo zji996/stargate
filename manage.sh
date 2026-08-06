@@ -19,10 +19,23 @@ check_shell() {
   find tools -type f -name '*.sh' | while IFS= read -r file; do
     sh -n "$file"
   done
-  luac -p luci-app-stargate/luasrc/controller/stargate.lua
-  find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
-    luac -p "$file"
+  find tests -type f -name '*.sh' | while IFS= read -r file; do
+    sh -n "$file"
+    sh "$file"
   done
+  if command -v luac >/dev/null 2>&1; then
+    luac -p luci-app-stargate/luasrc/controller/stargate.lua
+    find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
+      luac -p "$file"
+    done
+  elif command -v lua >/dev/null 2>&1; then
+    lua -e 'assert(loadfile(arg[1]))' luci-app-stargate/luasrc/controller/stargate.lua
+    find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
+      lua -e 'assert(loadfile(arg[1]))' "$file"
+    done
+  else
+    echo "skip Lua syntax check: lua/luac not found" >&2
+  fi
 }
 
 check_docs() {
