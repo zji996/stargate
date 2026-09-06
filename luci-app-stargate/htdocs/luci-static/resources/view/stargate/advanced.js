@@ -24,10 +24,13 @@ return view.extend({
       var view = this;
       function button(cmd, label, klass) {
         return E('button', {
+          'type': 'button',
           'class': 'btn cbi-button ' + (klass || ''),
           'click': ui.createHandlerFn(view, function() {
             return fs.exec('/usr/share/stargate/stargate.sh', [ cmd ])
               .then(function(res) {
+                if (!res || res.code !== 0)
+                  throw new Error((res && (res.stderr || res.stdout)) || _('Action failed'));
                 ui.addNotification(null, E('pre', {}, (res && res.stdout) || label));
                 window.setTimeout(function() { window.location.reload(); }, 600);
               })

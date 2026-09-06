@@ -9,6 +9,13 @@ firewall_lan_ifaces() {
   printf '%s\n' $ifaces
 }
 
+firewall_managed_ifaces() {
+  {
+    firewall_lan_ifaces
+    [ "${netbird_proxy:-1}" != "1" ] || printf '%s\n' "${netbird_interface:-wt0}"
+  } | awk 'NF && !seen[$0]++'
+}
+
 firewall_lan_ipv6_status() {
   dhcpv6="$(uci -q get dhcp.lan.dhcpv6 2>/dev/null || true)"
   ra="$(uci -q get dhcp.lan.ra 2>/dev/null || true)"
@@ -86,6 +93,12 @@ firewall_apply_iptables() {
   iptables -t nat -N STARGATE_TCP
   if [ "$rules_block_quic" = "1" ]; then
     iptables -N STARGATE_QUIC
+    if [ "$netbird_proxy" = "1" ]; then
+      for cidr in 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16; do
+        iptables -A STARGATE_QUIC -i "$netbird_interface" -d "$cidr" -j RETURN
+      done
+      iptables -A STARGATE_QUIC -o "$netbird_interface" -m conntrack --ctstate ESTABLISHED,RELATED -j RETURN
+    fi
     iptables -A STARGATE_QUIC -p udp --dport 443 -j REJECT
   fi
   input_guard=0
@@ -93,6 +106,11 @@ firewall_apply_iptables() {
     input_guard=1
   fi
 
+  if [ "$netbird_proxy" = "1" ]; then
+    for cidr in 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16; do
+      iptables -t nat -A STARGATE_DNS -i "$netbird_interface" -d "$cidr" -j RETURN
+    done
+  fi
   iptables -t nat -A STARGATE_DNS -p udp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
   iptables -t nat -A STARGATE_DNS -p tcp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
 
@@ -106,7 +124,7 @@ firewall_apply_iptables() {
   fi
   iptables -t nat -A STARGATE_TCP -p tcp -j REDIRECT --to-ports "$transparent_port"
 
-  firewall_lan_ifaces | while read -r iface; do
+  firewall_managed_ifaces | while read -r iface; do
     [ -n "$iface" ] || continue
     iptables -t nat -I PREROUTING 1 -i "$iface" -p tcp -j STARGATE_TCP
     if [ "$dns_hijack" = "1" ]; then
@@ -220,7 +238,7 @@ firewall_apply_ip6tables_guard() {
     ip6tables -A STARGATE_IPV6 -d "$cidr" -j RETURN
   done
   ip6tables -A STARGATE_IPV6 -j REJECT
-  firewall_lan_ifaces | while read -r iface; do
+  firewall_managed_ifaces | while read -r iface; do
     [ -n "$iface" ] || continue
     ip6tables -I FORWARD 1 -i "$iface" -j STARGATE_IPV6
   done
@@ -241,7 +259,7 @@ firewall_apply_nft() {
     return 1
   }
 
-  iface_set="$(firewall_lan_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
+  iface_set="$(firewall_managed_ifaces | awk 'BEGIN{first=1}{gsub(/"/,"\\\""); if(!first) printf ", "; printf "\"%s\"", $0; first=0}')"
   [ -n "$iface_set" ] || iface_set='"br-lan"'
   direct_ip_set="$(firewall_direct_bypass_cidrs all | awk 'BEGIN{first=1}{ if(!first) printf ", "; printf "%s", $0; first=0 }')"
   direct_set_block=""
@@ -256,20 +274,28 @@ firewall_apply_nft() {
 "
     direct_ip_return="    iifname { $iface_set } ip daddr @direct4 counter return comment \"Stargate direct bypass\""
   fi
-  firewall_clean_nft
+  # Delete and recreate in one transaction, only after the complete batch validates.
+  replace_table=""
+  if nft list table inet stargate >/dev/null 2>&1; then
+    replace_table="delete table inet stargate"
+  fi
   tmp_nft="$(mktemp "$tmp_prefix-nft.XXXXXX")"
   cat >"$tmp_nft" <<EOF
+$replace_table
 table inet stargate {
 $direct_set_block
   chain prerouting {
     type nat hook prerouting priority dstnat - 10; policy accept;
-    iifname { $iface_set } udp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
-    iifname { $iface_set } tcp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
+    iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
+    iifname { $iface_set } meta nfproto ipv4 udp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
+    iifname { $iface_set } meta nfproto ipv4 tcp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
 $direct_ip_return
-    iifname { $iface_set } meta l4proto tcp counter redirect to :$transparent_port comment "Stargate transparent redirect"
+    iifname { $iface_set } meta nfproto ipv4 meta l4proto tcp counter redirect to :$transparent_port comment "Stargate transparent redirect"
   }
   chain forward {
     type filter hook forward priority filter - 10; policy accept;
+    iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
+    oifname "$netbird_interface" ct state established,related counter return comment "Stargate overlay reply bypass"
     iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } counter return comment "Stargate local IPv6"
     iifname { $iface_set } meta nfproto ipv6 counter reject comment "Stargate IPv6 guard"
     iifname { $iface_set } udp dport 443 counter reject comment "Stargate QUIC block"
@@ -279,11 +305,18 @@ EOF
   if [ "$dns_hijack" != "1" ]; then
     sed -i '/dport 53/d' "$tmp_nft"
   fi
+  if [ "$netbird_proxy" != "1" ]; then
+    sed -i '/Stargate overlay .* bypass/d' "$tmp_nft"
+  fi
   if [ "$rules_block_quic" != "1" ]; then
     sed -i '/Stargate QUIC block/d' "$tmp_nft"
   fi
-  nft -f "$tmp_nft"
-  rc=$?
+  rc=0
+  if nft -c -f "$tmp_nft"; then
+    nft -f "$tmp_nft" || rc=$?
+  else
+    rc=$?
+  fi
   rm -f "$tmp_nft"
   return "$rc"
 }
@@ -367,6 +400,8 @@ firewall_status_text() {
   printf 'Backend: %s\n' "$backend"
   printf 'Active: %s\n' "$active"
   printf 'LAN interfaces: %s\n' "$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  printf 'Managed interfaces: %s\n' "$(firewall_managed_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  printf 'NetBird proxy: %s (%s)\n' "$netbird_proxy" "$netbird_interface"
   printf 'Transparent: %s %s:%s\n' "$transparent_proxy" "$transparent_mode" "$transparent_port"
   printf 'DNS redirect: %s:%s\n' "$dns_hijack" "$dns_hijack_port"
   printf 'QUIC block: %s\n' "$rules_block_quic"
@@ -406,6 +441,7 @@ firewall_status_json() {
     transparent_packets="$(firewall_nft_rule_packets "Stargate transparent redirect")"
     direct_bypass_packets="$(firewall_nft_rule_packets "Stargate direct bypass")"
   fi
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; Rule packets: DNS=$dns_packets transparent=$transparent_packets direct-bypass=$direct_bypass_packets; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
+  managed_ifaces="$(firewall_managed_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Managed interfaces: $managed_ifaces; NetBird proxy: $netbird_proxy ($netbird_interface); Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; Rule packets: DNS=$dns_packets transparent=$transparent_packets direct-bypass=$direct_bypass_packets; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
   printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","dns_packets":%s,"transparent_packets":%s,"direct_bypass_packets":%s,"message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$dns_packets" "$transparent_packets" "$direct_bypass_packets" "$(printf '%s' "$message" | json_escape)"
 }

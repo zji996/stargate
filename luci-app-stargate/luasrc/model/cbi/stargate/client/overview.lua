@@ -8,14 +8,8 @@ local shellquote = common.shellquote
 local ui_text = common.ui_text
 
 m = Map("stargate", translate("Stargate"))
+common.prepare_map(m)
 m.description = translate("Runtime status, proxy mode, and local outlet checks.")
-
-function m.on_after_commit(self)
-  local output = sys.exec("/usr/share/stargate/stargate.sh apply-runtime 2>&1")
-  if trim(output) ~= "" then
-    self.message = "<pre>" .. util.pcdata(output) .. "</pre>"
-  end
-end
 
 local function has_active_node()
   local server = trim(sys.exec("uci -q get stargate.node.server 2>/dev/null"))
@@ -138,7 +132,7 @@ function dash.cfgvalue()
     '<script type="text/javascript">',
     '//<![CDATA[',
     'function stargateProbeClass(ms, ok){if(!ok)return "stargate-bad";if(ms<800)return "stargate-ok";if(ms<1800)return "stargate-warn";return "stargate-bad";}',
-    'function stargateSetProbe(target, text, note, cls){var s=document.getElementById("stargate-"+target+"-status");var n=document.getElementById("stargate-"+target+"-note");if(s){s.className="stargate-probe-value "+cls;s.innerHTML=text;}if(n){n.innerHTML=note||"";}}',
+    'function stargateSetProbe(target, text, note, cls){var s=document.getElementById("stargate-"+target+"-status");var n=document.getElementById("stargate-"+target+"-note");if(s){s.className="stargate-probe-value "+cls;s.textContent=text;s.setAttribute("aria-live","polite");}if(n){n.textContent=note||"";}}',
     'function stargateCheckConnect(target){stargateSetProbe(target,"' .. checking .. '","' .. initial_probe_path .. '","stargate-muted");XHR.get("' .. connect_url .. '",{target:target},function(x,rv){if(!rv){stargateSetProbe(target,"' .. problem .. '","XHR failed","stargate-bad");return;}var ms=rv.use_time||0;var mode=rv.mode==="local"?(rv.firewall_active===false&&rv.mode_label&&rv.mode_label.indexOf("inactive")>=0?"' .. inactive_forwarding .. '":(rv.mode_label&&rv.mode_label.indexOf("forwarding active")>=0?"' .. active_forwarding .. '":"' .. local_outlet .. '")):(rv.mode==="stopped"?"' .. stopped_outlet .. '":"' .. direct_outlet .. '");var dev=rv.dev?(" dev "+rv.dev):"";var src=rv.src?(" src "+rv.src):"";var note=mode+" / HTTP "+(rv.code||0)+dev+src;if(rv.ok){stargateSetProbe(target,ms+" ms",note,stargateProbeClass(ms,true));}else{stargateSetProbe(target,"' .. problem .. '",(rv.message||"failed")+" / "+note,"stargate-bad");}});}',
     'function stargateRuntimeCheckboxes(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");var row=document.getElementById("cbi-stargate-inbound-transparent_proxy");if(!local||!transparent)return;var on=!!local.checked;if(!on)transparent.checked=false;if(row){if(on)row.classList.remove("stargate-disabled");else row.classList.add("stargate-disabled");}}',
     'document.addEventListener("DOMContentLoaded",function(){var local=document.querySelector("[name=\'cbid.stargate.global.enabled\'][type=\'checkbox\']");var transparent=document.querySelector("[name=\'cbid.stargate.inbound.transparent_proxy\'][type=\'checkbox\']");if(local)local.addEventListener("change",stargateRuntimeCheckboxes);if(transparent)transparent.addEventListener("change",function(){if(local&&!local.checked)this.checked=false;stargateRuntimeCheckboxes();});stargateRuntimeCheckboxes();});',
@@ -156,13 +150,12 @@ mode_section = m:section(NamedSection, "inbound", "inbound", ui_text("Transparen
 mode_section.anonymous = true
 
 transparent_proxy = mode_section:option(Flag, "transparent_proxy", ui_text("Transparent proxy", "透明代理"))
-transparent_proxy.description = ui_text("Optional transparent inbound. Enable local proxy first, then configure forwarding on the Advanced page.", "可选透明入站。需要先勾选本机代理；之后到高级页配置转发。")
+transparent_proxy.description = ui_text("Proxy managed traffic after Save & Apply.", "保存并应用后，接管受管接口流量。")
 transparent_proxy.default = "0"
 transparent_proxy.rmempty = false
 
 transparent_mode = mode_section:option(ListValue, "transparent_mode", ui_text("Transparent mode", "透明模式"))
 transparent_mode:value("redirect", "redirect")
-transparent_mode:value("tproxy", "tproxy")
 transparent_mode.default = "redirect"
 transparent_mode.rmempty = true
 transparent_mode:depends("transparent_proxy", "1")
@@ -172,5 +165,15 @@ transparent_port.default = "12345"
 transparent_port.datatype = "port"
 transparent_port.rmempty = true
 transparent_port:depends("transparent_proxy", "1")
+
+netbird_proxy = mode_section:option(Flag, "netbird_proxy", ui_text("Proxy NetBird exit traffic", "接管 NetBird 出口流量"))
+netbird_proxy.default = "1"
+netbird_proxy.rmempty = false
+netbird_proxy:depends("transparent_proxy", "1")
+
+netbird_interface = mode_section:option(Value, "netbird_interface", ui_text("NetBird interface", "NetBird 接口"))
+netbird_interface.default = "wt0"
+netbird_interface.rmempty = false
+netbird_interface:depends({ transparent_proxy = "1", netbird_proxy = "1" })
 
 return m

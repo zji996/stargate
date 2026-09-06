@@ -16,6 +16,9 @@ check_shell() {
   sh -n manage.sh
   sh -n luci-app-stargate/root/usr/share/stargate/stargate.sh
   sh -n luci-app-stargate/root/etc/init.d/stargate
+  for file in luci-app-stargate/root/usr/share/stargate/lib/*.sh; do
+    sh -n "$file"
+  done
   find tools -type f -name '*.sh' | while IFS= read -r file; do
     sh -n "$file"
   done
@@ -25,6 +28,7 @@ check_shell() {
   done
   if command -v luac >/dev/null 2>&1; then
     luac -p luci-app-stargate/luasrc/controller/stargate.lua
+    luac -p luci-app-stargate/luasrc/model/stargate/common.lua
     find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
       luac -p "$file"
     done
@@ -84,6 +88,7 @@ check_json() {
 
 check_js() {
   if command -v node >/dev/null 2>&1; then
+    node --check luci-app-stargate/htdocs/luci-static/resources/stargate-cbi.js
     for file in luci-app-stargate/htdocs/luci-static/resources/view/stargate/*.js; do
       node --check "$file" >/dev/null
     done

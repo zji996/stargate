@@ -253,7 +253,7 @@ function backup_restore()
 
   local output = ""
   local ok = false
-  if http.formvalue("restore") then
+  if common.action("restore") then
     output = sys.exec("/usr/share/stargate/stargate.sh backup-restore " .. shellquote(upload) .. " 2>&1; printf '\\n__rc=%s' $?")
     local rc = tonumber(output:match("__rc=(%d+)%s*$")) or 1
     output = output:gsub("\n?__rc=%d+%s*$", "")
@@ -293,7 +293,7 @@ function singbox_upgrade()
 
   local output = ""
   local ok = false
-  if http.formvalue("upgrade") then
+  if common.action("upgrade") then
     output = sys.exec("/usr/share/stargate/stargate.sh singbox-upgrade " .. shellquote(upload) .. " 2>&1; printf '\\n__rc=%s' $?")
     local rc = tonumber(output:match("__rc=(%d+)%s*$")) or 1
     output = output:gsub("\n?__rc=%d+%s*$", "")

@@ -1,4 +1,5 @@
 m = Map("stargate", translate("DNS"))
+require("luci.model.stargate.common").prepare_map(m)
 
 s = m:section(NamedSection, "dns", "dns", translate("DNS policy"))
 s.anonymous = true

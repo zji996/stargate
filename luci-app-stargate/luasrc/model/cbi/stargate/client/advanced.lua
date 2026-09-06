@@ -8,9 +8,10 @@ local trim = common.trim
 local ui_text = common.ui_text
 
 m = Map("stargate", ui_text("Advanced", "高级"))
+common.prepare_map(m)
 m.description = ui_text("Forwarding and system integration settings for transparent proxy.", "透明代理的转发和系统集成设置。")
 
-local action = http.formvalue("stargate_advanced_action")
+local action = common.action("stargate_advanced_action")
 if action == "apply-forwarding" then
   m.message = trim(sys.exec("/usr/share/stargate/stargate.sh firewall-apply 2>&1"))
 elseif action == "clean-forwarding" then
@@ -45,8 +46,8 @@ function actions.cfgvalue()
     '<div class="stargate-forwarding-note">' .. ui_text("Applies or removes only Stargate-owned transparent proxy forwarding rules. Backend is selected automatically: nftables first, iptables fallback.", "只应用或清理 Stargate 自己的透明代理转发规则。后端自动选择：优先 nftables，缺失时回退 iptables。") .. '</div>',
     '</div>',
     '<div class="stargate-forwarding-actions">',
-    '<a class="cbi-button cbi-button-apply" href="' .. base .. '?stargate_advanced_action=apply-forwarding">' .. ui_text("Apply transparent forwarding", "应用透明代理转发") .. '</a>',
-    '<a class="cbi-button" href="' .. base .. '?stargate_advanced_action=clean-forwarding">' .. ui_text("Clean Stargate forwarding", "清理 Stargate 转发") .. '</a>',
+    '<button type="button" class="cbi-button cbi-button-apply" data-field="stargate_advanced_action" data-stargate-action="apply-forwarding">' .. ui_text("Apply transparent forwarding", "应用透明代理转发") .. '</button>',
+    '<button type="button" class="cbi-button" data-field="stargate_advanced_action" data-stargate-action="clean-forwarding" data-confirm="' .. ui_text("Remove forwarding? Managed traffic will no longer use the proxy.", "清理转发后，受管流量将不再经过代理，继续？") .. '">' .. ui_text("Clean Stargate forwarding", "清理 Stargate 转发") .. '</button>',
     '</div>',
     '</div>'
   }, "\n")

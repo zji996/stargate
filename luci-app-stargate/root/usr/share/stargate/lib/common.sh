@@ -76,6 +76,8 @@ load_config() {
   transparent_mode="$(uci_get inbound transparent_mode redirect)"
   transparent_listen="$(uci_get inbound transparent_listen 0.0.0.0)"
   transparent_port="$(uci_get inbound transparent_port 12345)"
+  netbird_proxy="$(bool_value "$(uci_get inbound netbird_proxy 1)")"
+  netbird_interface="$(uci_get inbound netbird_interface wt0)"
 
   node_type="$(uci_get node type anytls)"
   node_server="$(uci_get node server '')"
@@ -139,6 +141,14 @@ validate_config() {
   validate_port_value "$dns_hijack_port" "DNS hijack port" || exit 1
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
+  if [ "$transparent_proxy" = "1" ] && [ "$transparent_mode" != "redirect" ]; then
+    echo "transparent forwarding currently supports redirect mode only" >&2
+    return 1
+  fi
+  case "$netbird_interface" in
+    ''|*[!a-zA-Z0-9_.-]*) echo "invalid NetBird interface name" >&2; return 1 ;;
+  esac
+  [ "${#netbird_interface}" -le 15 ] || { echo "NetBird interface name is too long" >&2; return 1; }
   case "$lan_ipv6_policy" in keep|disable_on_transparent) ;; *) echo "unsupported LAN IPv6 policy: $lan_ipv6_policy" >&2; exit 1 ;; esac
   validate_port_value "$socks_port" "SOCKS port" || exit 1
   validate_port_value "$http_port" "HTTP port" || exit 1

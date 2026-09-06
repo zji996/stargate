@@ -73,7 +73,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 LuCI 版后端还提供两个显式启动动作：
 
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
-- `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。
+- `start-transparent redirect [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 入站并重启 Stargate，默认端口是 `12345`。当前防火墙后端不支持 TProxy，运行态入口会提前拒绝该模式。
 - `apply-runtime`：按当前 UCI 期望同步运行态。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。
 
 这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
@@ -81,6 +81,18 @@ LuCI 版后端还提供两个显式启动动作：
 LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
 
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
+
+### NetBird 接管边界
+
+透明代理启用时，`inbound.netbird_proxy` 默认 `1`，将 `inbound.netbird_interface`（默认 `wt0`）与 LAN 一起作为受管入口。关闭该选项只撤销 NetBird 接管，保留 LAN 透明代理。接口名独立于 LAN 配置，避免为了接管 VPN 而修改 `network.lan.device`。
+
+NetBird 入站访问私有 IPv4 目标时先绕过，包括内网 DNS；访问公网 DNS 和 TCP 时进入现有 DNS/代理分流。受管接口的公网 IPv6 被 guard 阻断，UDP/443 按 QUIC 开关处理，其他 UDP 不代理。NetBird ACL 和系统防火墙仍然负责入站授权；Stargate 不修改它们，部署时必须单独核对重定向后 INPUT 路径是否获准。
+
+这只提供数据面接管，不发布 NetBird exit node、不替客户端选择出口，也不改变 NetBird Auto Apply。nft 后端将校验通过的删除旧表和新建表合并为一个事务，校验失败时保留原表；iptables 后端目前仍按既有链更新流程执行。
+
+### LuCI 交互边界
+
+CBI 页面通过 `luci.model.stargate.common` 引入共用模板和 `stargate-cbi.js`，集中处理 POST 动作、文件上传反馈、移动端弹窗和键盘焦点。修改配置后由 LuCI 正常提交并触发 procd reload，页面不在提交前抢先应用旧配置。上传控件使用独立 FormData 请求，避免在 LuCI 主表单内嵌套 form。
 
 ## 命名边界
 

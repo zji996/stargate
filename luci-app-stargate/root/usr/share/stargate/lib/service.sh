@@ -160,6 +160,8 @@ status_json() {
     printf '"backup_ready":false,'
   fi
   printf '"transparent_proxy":%s,' "$(bool_json "$transparent_proxy")"
+  printf '"netbird_proxy":%s,' "$(bool_json "$netbird_proxy")"
+  printf '"netbird_interface":"%s",' "$(printf '%s' "$netbird_interface" | json_escape)"
   printf '"transparent_mode":"%s",' "$transparent_mode"
   printf '"transparent_listen":"%s",' "$(printf '%s' "$transparent_listen" | json_escape)"
   printf '"transparent_port":"%s",' "$(printf '%s' "$transparent_port" | json_escape)"

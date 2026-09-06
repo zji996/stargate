@@ -3,6 +3,20 @@ local util = require "luci.util"
 
 local M = {}
 
+function M.prepare_map(map)
+  local section = map:section(require("luci.cbi").SimpleSection)
+  section.template = "stargate/common"
+end
+
+function M.action(name)
+  local http = require "luci.http"
+  local dispatcher = require "luci.dispatcher"
+  if http.getenv("REQUEST_METHOD") ~= "POST" then return nil end
+  local token = dispatcher.context.authtoken
+  if type(token) ~= "string" or token == "" or http.formvalue("token") ~= token then return nil end
+  return http.formvalue(name)
+end
+
 function M.trim(value)
   return (value or ""):gsub("%s+$", "")
 end

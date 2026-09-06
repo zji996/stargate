@@ -7,6 +7,8 @@ config global 'global'
 	option auto_start '0'
 
 config inbound 'inbound'
+  option netbird_proxy '1'
+  option netbird_interface 'wt0'
 	option socks_listen '127.0.0.1'
 	option socks_port '10808'
 	option http_listen '127.0.0.1'

@@ -2,7 +2,18 @@
 
 ## 当前目标
 
-保持清晰的项目结构，让下一轮人类或 AI 能快速理解 Stargate 的目标、边界、当前实现和验证方式。
+完善 NetBird 出口流量接管和 LuCI 交互，在 S20M 上验证；保持可回滚的部署与明确的运行边界。
+
+## 2026-09-07 更新
+
+- 用户授权透明代理启用时默认接管 NetBird 接口 `wt0`；`inbound.netbird_proxy=0` 可关闭，`inbound.netbird_interface` 可配置接口名。透明代理总开关仍默认关闭，不修改 NetBird 服务、控制面、出口选择或发布路由。
+- IPv4 TCP、公网 DNS、QUIC 阻断及公网 IPv6 guard 覆盖 LAN 和受管 NetBird 接口；NetBird 到私有网段的访问（包含内网 DNS）保持原路径。当前仍不代理一般 UDP 或公网 IPv6。
+- nftables 规则先完整校验，再以同一事务替换 Stargate 表。后端状态显示受管接口。
+- LuCI CBI 共用提交动作、上传反馈及弹窗层级实现。维护页移除嵌套表单，修改动作使用带会话 token 的 POST，节点删除/回滚/重置有确认；移动端文件控件与节点弹窗已修正。
+- 概览移除提前执行的运行态提交钩子，使用 LuCI 正常提交和既有 procd reload trigger；JS 概览也取消重复应用。页面移除未支持的 TProxy 选项，后端在改动配置前拒绝该透明转发模式。
+- 已部署 `192.168.6.1`，未修改 `192.168.8.1`。部署前备份为 `/root/stargate-upgrade-20260907/files.tar.gz` 和 `firewall.nft`。
+- 验证：`sh manage.sh check`；实机 sing-box 校验；Google 本机代理和 LAN 客户端显式 IPv4 无应用代理请求均 HTTP 204；NetBird 对端 ICMP 正常；Playwright 桌面/手机六页面截图、弹窗遮挡/退出、空上传提示、临时节点添加删除、NetBird 开关保存后的规则撤销与恢复均通过。
+- 验证边界：当前控制面提供的 exit node 仍是 GL-MT6000，S20M 未新增出口路由；尚未使用出差客户端完成选择 S20M 出口后的端到端实测。不能把本机 HTTP 检测等同于 NetBird 出口验证。
 
 ## 项目定位
 
@@ -74,7 +85,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 不把项目强行拆成 monorepo；当前没有多个独立运行单元。
 - 不新增空的 `apps/`、`packages/` 或复杂工程目录。
 - 不从 `third_party/` import、source、复制运行时路径或建立构建依赖。
-- 前端、透明代理、订阅、多协议导入都属于未来阶段，但方向上属于 Stargate 长期目标。
+- LuCI 前端和 IPv4 TCP 透明代理已实现；订阅、多协议导入仍属于未来阶段。
 
 ## 验收标准
 

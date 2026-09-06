@@ -8,9 +8,10 @@ local trim = common.trim
 local ui_text = common.ui_text
 
 m = Map("stargate", ui_text("Maintenance", "维护"))
+common.prepare_map(m)
 m.description = ui_text("Maintain sing-box paths, future component upgrades, and Stargate backup restore.", "维护 sing-box 路径、后续组件升级和 Stargate 备份还原。")
 
-local action = http.formvalue("stargate_action")
+local action = common.action("stargate_action")
 if action == "rollback" or action == "reset-defaults" or action == "singbox-rollback" then
   m.message = "<pre>" .. util.pcdata(sys.exec("/usr/share/stargate/stargate.sh " .. action .. " 2>&1")) .. "</pre>"
 end
@@ -73,12 +74,11 @@ function upgrade_actions.cfgvalue()
   local base = dispatcher.build_url("admin", "services", "stargate", "component")
   local upgrade_url = dispatcher.build_url("admin", "services", "stargate", "singbox_upgrade")
   return table.concat({
-    '<form class="stargate-inline-form" method="post" action="' .. upgrade_url .. '" enctype="multipart/form-data">',
-    '<input type="file" name="binary" />',
-    '<input type="hidden" name="upgrade" value="1" />',
-    '<input class="cbi-button cbi-button-action" type="submit" value="' .. ui_text("Upload upgrade", "上传升级") .. '" />',
-    '<input class="cbi-button" type="button" value="' .. ui_text("Rollback", "执行回滚") .. '" onclick="location.href=\'' .. base .. '?stargate_action=singbox-rollback\'" />',
-    '</form>'
+    '<div class="stargate-inline-form">',
+    '<input type="file" id="stargate-binary" aria-label="' .. ui_text("sing-box binary", "sing-box 文件") .. '" />',
+    '<button class="cbi-button cbi-button-action" type="button" data-upload-url="' .. upgrade_url .. '" data-file="stargate-binary" data-file-field="binary" data-upload-action="upgrade" data-confirm="' .. ui_text("Replace sing-box with this file?", "使用此文件替换 sing-box？") .. '">' .. ui_text("Upload upgrade", "上传升级") .. '</button>',
+    '<button class="cbi-button" type="button" data-field="stargate_action" data-stargate-action="singbox-rollback" data-confirm="' .. ui_text("Rollback sing-box?", "回滚 sing-box？") .. '">' .. ui_text("Rollback", "执行回滚") .. '</button>',
+    '</div>'
   }, "")
 end
 
@@ -105,23 +105,20 @@ function actions.cfgvalue()
     '<div class="stargate-maint-label">' .. ui_text("Create backup file", "创建备份文件") .. '</div>',
     '<div class="stargate-maint-control"><a class="cbi-button cbi-button-apply" href="' .. download_url .. '">' .. ui_text("Download backup", "下载备份") .. '</a></div>',
     '</div>',
-    '<form class="stargate-maint-row" method="post" action="' .. restore_url .. '" enctype="multipart/form-data">',
+    '<div class="stargate-maint-row">',
     '<div class="stargate-maint-label">' .. ui_text("Restore backup file", "恢复备份文件") .. '</div>',
-    '<div class="stargate-maint-control"><input type="file" name="archive" accept=".tar.gz,.tgz,application/gzip" /><input type="hidden" name="restore" value="1" /><input class="cbi-button cbi-button-action" type="submit" value="' .. ui_text("Restore backup", "恢复备份") .. '" /></div>',
-    '</form>',
+    '<div class="stargate-maint-control"><input type="file" id="stargate-archive" aria-label="' .. ui_text("Backup archive", "备份文件") .. '" accept=".tar.gz,.tgz,application/gzip" /><button class="cbi-button cbi-button-action" type="button" data-upload-url="' .. restore_url .. '" data-file="stargate-archive" data-file-field="archive" data-upload-action="restore" data-confirm="' .. ui_text("Replace current configuration with this backup?", "使用此备份替换当前配置？") .. '">' .. ui_text("Restore backup", "恢复备份") .. '</button></div>',
+    '</div>',
     '<div class="stargate-maint-row">',
     '<div class="stargate-maint-label">' .. ui_text("Restore default config", "恢复默认配置") .. '</div>',
-    '<div class="stargate-maint-control"><input class="cbi-button cbi-button-negative" type="button" value="' .. ui_text("Reset", "执行重置") .. '" onclick="if(confirm(\'' .. ui_text("Reset Stargate config to defaults and stop the service?", "将 Stargate 配置恢复默认并停止服务？") .. '\')) location.href=\'' .. base .. '?stargate_action=reset-defaults\'" /></div>',
+    '<div class="stargate-maint-control"><button class="cbi-button cbi-button-negative" type="button" data-field="stargate_action" data-stargate-action="reset-defaults" data-confirm="' .. ui_text("Reset Stargate config to defaults and stop the service?", "将 Stargate 配置恢复默认并停止服务？") .. '">' .. ui_text("Reset", "执行重置") .. '</button></div>',
     '</div>',
     '<div class="stargate-maint-row">',
     '<div class="stargate-maint-label">' .. ui_text("Rollback generated config", "回滚生成配置") .. '</div>',
-    '<div class="stargate-maint-control"><input class="cbi-button" type="button" value="' .. ui_text("Rollback", "执行回滚") .. '" onclick="location.href=\'' .. base .. '?stargate_action=rollback\'" /></div>',
+    '<div class="stargate-maint-control"><button class="cbi-button" type="button" data-field="stargate_action" data-stargate-action="rollback" data-confirm="' .. ui_text("Rollback generated configuration?", "回滚生成配置？") .. '">' .. ui_text("Rollback", "执行回滚") .. '</button></div>',
     '</div>',
     '</div>',
     '</div>',
-    '<script type="text/javascript">',
-    'document.addEventListener("submit",function(ev){var form=ev.target;if(!form||!form.classList||!form.classList.contains("stargate-maint-row"))return;var file=form.querySelector("input[type=file]");if(!file||!file.value){ev.preventDefault();alert("' .. ui_text("Choose a backup file first.", "请先选择备份文件。") .. '");}});',
-    '</script>'
   }, "\n")
 end
 

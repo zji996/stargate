@@ -26,16 +26,6 @@ return view.extend({
   handleSaveApply: function(ev, mode) {
     return this.handleSave(ev).then(function() {
       return ui.changes.apply(mode == '0');
-    }).then(function() {
-      return fs.exec_direct('/usr/share/stargate/stargate.sh', [ 'apply-runtime' ])
-        .then(function(text) {
-          if (text)
-            ui.addNotification(null, E('pre', {}, text));
-        })
-        .catch(function(err) {
-          ui.addNotification(null, E('pre', {}, err.message || String(err)), 'danger');
-          throw err;
-        });
     });
   },
 
@@ -111,7 +101,6 @@ return view.extend({
 
     var mode = tp.option(form.ListValue, 'transparent_mode', _('Transparent mode'));
     mode.value('redirect', 'redirect');
-    mode.value('tproxy', 'tproxy');
     mode.default = 'redirect';
     mode.rmempty = true;
     mode.depends('transparent_proxy', '1');
@@ -121,6 +110,15 @@ return view.extend({
     port.datatype = 'port';
     port.rmempty = true;
     port.depends('transparent_proxy', '1');
+
+    var netbird = tp.option(form.Flag, 'netbird_proxy', _('Proxy NetBird exit traffic'));
+    netbird.default = '1';
+    netbird.rmempty = false;
+    netbird.depends('transparent_proxy', '1');
+    var iface = tp.option(form.Value, 'netbird_interface', _('NetBird interface'));
+    iface.default = 'wt0';
+    iface.rmempty = false;
+    iface.depends({ transparent_proxy: '1', netbird_proxy: '1' });
 
     return m.render().then(function(node) {
       function syncRuntimeCheckboxes() {
