@@ -3,6 +3,17 @@
   var form = document.querySelector('form[name="cbi"]');
   if (!form) return;
   form.id = 'stargate-cbi-form';
+  function syncSurface() {
+    var section=form.querySelector('.cbi-section');
+    while(section) {
+      var color=getComputedStyle(section).backgroundColor;
+      if(color!=='rgba(0, 0, 0, 0)' && color!=='transparent') { form.style.setProperty('--sg-surface',color); break; }
+      section=section.parentElement;
+    }
+  }
+  syncSurface();
+  window.addEventListener('load',syncSurface);
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change',syncSurface);
   var feedback = document.getElementById('stargate-feedback');
   function message(text) { feedback.textContent = text; feedback.scrollIntoView({block:'nearest'}); }
   document.addEventListener('click', function(ev) {

@@ -61,6 +61,10 @@ return view.extend({
       ]);
     };
 
+    var port=s.option(form.Value,'transparent_port',_('Transparent port'));
+    port.default='12345'; port.datatype='port'; port.rmempty=false;
+    var iface=s.option(form.Value,'netbird_interface',_('NetBird interface'));
+    iface.default='wt0'; iface.rmempty=false;
     return m.render();
   }
 });

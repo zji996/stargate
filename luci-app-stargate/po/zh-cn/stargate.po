@@ -618,3 +618,36 @@ msgstr "检测中..."
 
 msgid "Problem detected!"
 msgstr "检测异常"
+
+msgid "Running"
+msgstr "运行中"
+
+msgid "Stopped"
+msgstr "未运行"
+
+msgid "Enable Stargate"
+msgstr "启用 Stargate"
+
+msgid "Traffic"
+msgstr "流量接管"
+
+msgid "LAN proxy"
+msgstr "局域网代理"
+
+msgid "NetBird exit proxy"
+msgstr "NetBird 出口代理"
+
+msgid "Proxy connectivity"
+msgstr "代理连通性"
+
+msgid "Add and select a node"
+msgstr "添加并选择节点"
+
+msgid "Enable Stargate first"
+msgstr "请先启用 Stargate"
+
+msgid "Checking…"
+msgstr "检测中…"
+
+msgid "Failed"
+msgstr "未连通"

@@ -53,4 +53,12 @@ function actions.cfgvalue()
   }, "\n")
 end
 
+local port = s:option(Value, "transparent_port", ui_text("Transparent port", "透明代理端口"))
+port.default = "12345"
+port.datatype = "port"
+port.rmempty = false
+local iface = s:option(Value, "netbird_interface", ui_text("NetBird interface", "NetBird 接口"))
+iface.default = "wt0"
+iface.rmempty = false
+
 return m

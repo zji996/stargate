@@ -89,6 +89,7 @@ check_json() {
 check_js() {
   if command -v node >/dev/null 2>&1; then
     node --check luci-app-stargate/htdocs/luci-static/resources/stargate-cbi.js
+    node --check luci-app-stargate/htdocs/luci-static/resources/stargate-overview.js
     for file in luci-app-stargate/htdocs/luci-static/resources/view/stargate/*.js; do
       node --check "$file" >/dev/null
     done
