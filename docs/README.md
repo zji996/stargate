@@ -9,5 +9,6 @@
 5. `reference/s20m-nftables-build.md`：S20M/S20L nftables 固件编译适配和刷后验证。
 6. `roadmap.md`：未来阶段规划。
 7. `reference/naming.md`：命名来源和边界。
+8. [NetBird 出口设计](reference/netbird-exit-node.md)：已部署的数据面基础、尚未执行的控制台配置和验收。
 
 `reference/` 只记录当前真实系统。未实现的内容应放在 `roadmap.md`，或在文中明确标注 `Status: Not Implemented`。

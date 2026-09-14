@@ -100,8 +100,16 @@ load_config() {
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
   dns_hijack="$(bool_value "$(uci_get dns hijack_dns 1)")"
   dns_hijack_port="$(uci_get dns hijack_port 1053)"
+  dns_lan_port="$(uci -q get 'dhcp.@dnsmasq[0].port' 2>/dev/null || true)"
+  dns_lan_port="${dns_lan_port:-53}"
+  dns_ipv6_address="$(firewall_dns_ipv6_address)"
 
   rules_mode="$(uci_get rules mode blacklist)"
+  # Resolver fallback follows the routing mode; old dns.final values are ignored.
+  case "$rules_mode" in
+    whitelist|global_proxy) dns_final=remote-doh ;;
+    *) dns_final=direct-dns ;;
+  esac
   rules_default_outbound="direct"
   rules_source="$(uci_get rules source loyalsoldier)"
   rules_source_base_url="$(uci_get rules source_base_url https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release)"
@@ -139,6 +147,16 @@ validate_config() {
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
   validate_port_value "$dns_hijack_port" "DNS hijack port" || exit 1
+  validate_port_value "$dns_lan_port" "dnsmasq port (local DNS is required)" || exit 1
+  [ "$dns_hijack_port" != "$dns_lan_port" ] || {
+    echo "DNS hijack port must differ from dnsmasq port" >&2
+    return 1
+  }
+  if [ "$transparent_proxy" = "1" ] && [ "$dns_hijack" = "1" ] &&
+     [ -s /proc/net/if_inet6 ] && [ -z "$dns_ipv6_address" ]; then
+    echo "IPv6 DNS redirect requires a global-scope LAN address (ULA preferred); retry after LAN is ready" >&2
+    return 1
+  fi
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
   if [ "$transparent_proxy" = "1" ] && [ "$transparent_mode" != "redirect" ]; then

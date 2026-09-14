@@ -65,15 +65,13 @@ remote_path = s:option(Value, "remote_path", translate("DoH path"))
 remote_path.default = "/dns-query"
 remote_path:depends({ remote_preset = "custom", remote_type = "https" })
 
-final = s:option(ListValue, "final", translate("Final resolver"))
-final:value("remote-doh", translate("Remote"))
-final:value("direct-dns", translate("Direct"))
-final:value("local", translate("System local"))
-final.default = "direct-dns"
-final.description = translate("Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.")
+fallback = s:option(DummyValue, "_fallback", translate("Final resolver"))
+function fallback.cfgvalue()
+  return translate("Follows rule mode: Direct for blacklist/direct, Remote for whitelist/global proxy.")
+end
 
 hijack_dns = s:option(Flag, "hijack_dns", translate("DNS redirect"))
-hijack_dns.description = translate("Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied.")
+hijack_dns.description = translate("Redirect IPv4 and IPv6 DNS for managed devices. Local domains use dnsmasq; other queries follow rule priority.")
 hijack_dns.default = "1"
 hijack_dns.rmempty = false
 

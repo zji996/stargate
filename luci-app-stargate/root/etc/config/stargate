@@ -29,7 +29,6 @@ config node 'node'
 
 config dns 'dns'
 	option mode 'tcp_doh'
-	option final 'direct-dns'
 	option strategy 'prefer_ipv4'
 	option local_preset 'alidns_tcp'
 	option local_server '223.5.5.5'

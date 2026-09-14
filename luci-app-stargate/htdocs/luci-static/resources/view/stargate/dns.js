@@ -70,15 +70,13 @@ return view.extend({
     remotePath.default = '/dns-query';
     remotePath.depends({ remote_preset: 'custom', remote_type: 'https' });
 
-    var final = s.option(form.ListValue, 'final', _('Final resolver'));
-    final.value('remote-doh', _('Remote'));
-    final.value('direct-dns', _('Direct'));
-    final.value('local', _('System local'));
-    final.default = 'direct-dns';
-    final.description = _('Recommended: Direct. Proxy rule matches still use Remote automatically; Direct only controls the fallback resolver.');
+    var final = s.option(form.DummyValue, '_fallback', _('Final resolver'));
+    final.cfgvalue = function() {
+      return _('Follows rule mode: Direct for blacklist/direct, Remote for whitelist/global proxy.');
+    };
 
     var hijack = s.option(form.Flag, 'hijack_dns', _('DNS redirect'));
-    hijack.description = _('Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied.');
+    hijack.description = _('Redirect IPv4 and IPv6 DNS for managed devices. Local domains use dnsmasq; other queries follow rule priority.');
     hijack.default = '1';
     hijack.rmempty = false;
 

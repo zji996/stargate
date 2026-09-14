@@ -2,9 +2,22 @@
 
 ## 当前目标
 
-完善 NetBird 出口流量接管和 LuCI 交互，在 S20M 上验证；保持可回滚的部署与明确的运行边界。
+IPv6 DNS 与分流优先级修复已部署；下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
 
-## 2026-09-07 更新
+## 2026-09-14 更新
+
+- 用户授权修复 IPv6 DNS、统一分流优先级，同步仓库/设备，并设计通过 NetBird exit node 使用 Stargate。已部署 `192.168.6.1`，没有修改 `192.168.8.1` 的服务或路由，没有发布新的 NetBird exit route。
+- IPv4/IPv6 TCP/UDP 53 均接管。IPv6 DNS 必须绑定具体 LAN 地址（优先 ULA），并 DNAT 到同一地址；多地址 LAN 上通配 `::` + REDIRECT 会选错 UDP 回复源地址。LAN 接口变化有 procd reload trigger，缺可绑定地址时预检失败。
+- `.lan`、dnsmasq 配置域、单标签主机名和私网反向解析显式交回 `127.0.0.1` 的 dnsmasq TCP 端口，避免经过 NetBird 管理的系统 resolver。
+- DNS 采用用户直连 → 用户代理 → 基础 proxy → 基础 direct；模式自动决定兜底。路由用户域名优先于基础 IP 补充，解析后重查用户 IP 和补充 CIDR。全局代理/仅直连跳过隐藏的旧覆盖和基础规则。旧 UCI `dns.final` 不再决定结果，LuCI 已改为显示自动策略。
+- 公网 CIDR 不再加入防火墙 direct4 绕过集合；国内公网 TCP 也进入 sing-box 后分流。Rules 域名测试标明检查范围，未知域名需要解析后才能判定 IP 策略。
+- 设备 NetBird 为 0.72.4，会自动向其他 INPUT/FORWARD 链插入接受规则。nft guard 已改到 DNS NAT 之后的 PREROUTING -10，避免被自动放行覆盖。NetBird 到其他私网目标仍保持原路径，到本路由器的 DNS 也按新策略接管。
+- 验证：`sh manage.sh check`；四种模式实机配置校验；nft dry-run；正式 DNS 32 组查询通过，覆盖 IPv4、ULA、GUA、手填公网 IPv6 DNS 及 TCP/UDP；回归确认 UDP 反向 NAT。LAN 无应用代理：百度/Facebook/GitHub 200，Google/gstatic 204，ChatGPT TLS 成功但站点返回 403；不能据此宣称 ChatGPT 业务访问已通过。
+- 本机 Windows DNS 缓存已清理。LAN UDP/443 和公网 IPv6 TCP 探测均立即拒绝；原 NetBird 私网对端 ICMP 正常。隔离验证进程和临时 nft 表已移除。
+- 最终部署前备份：`/root/stargate-fix-20260914-114242/files.tar.gz`、`stargate.nft`、`firewall.nft`；目录内 `rollback.sh` 可恢复本次文件和 Stargate 表。已实际执行过回滚。最终部署已通过首轮回归并取消自动回滚计时。
+- [NetBird 出口设计](reference/netbird-exit-node.md) 区分已部署数据面、尚未执行的控制台配置和远端验收。普通 UDP 仍不经代理，公网 IPv6 仍拒绝；iptables 新增 IPv6 DNS 路径尚未实机验收，当前出口方案基于 S20M nft。
+
+## 2026-09-07 更新（历史记录）
 
 2026-09-08 概览精简：主页只保留运行状态、版本、连接检测和服务/流量开关，不显示节点地址或节点名称；端口与 NetBird 接口移至高级页。共用独立概览样式，重置主题浮动字段布局，移除冗余说明并修正深色主题操作栏背景。已部署 S20M，Playwright 验证深浅色主题下 390/1440/2048 像素布局、控件无重叠、连接检测及主页 HTML 无节点 IP。
 
@@ -60,14 +73,14 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 未配置当前节点时，Overview 会显示阻塞提示；init 脚本启动前会再次检查当前节点，防止绕过 LuCI 启动。
 - Node 页开始提供轻量节点列表，支持手动添加 AnyTLS、通过 `anytls://` 链接添加、编辑节点、使用节点和删除节点。新增和链接添加入口位于节点列表上方，节点编辑和“使用此节点”跟随列表行。第一版不做订阅和多协议导入。
 - 节点和入站端口在后端统一校验为 `1..65535`；AnyTLS URI 的密码、SNI 和标签按 URI 百分号编码解码，字面量 `+` 不会被错误转换为空格。
-- DNS 页使用预设下拉加自定义兜底：默认直连 DNS 为阿里 DNS TCP，远端 DNS 为 Google 域名 DoH `https://dns.google/dns-query`，`final` 默认为 `direct-dns`，代理规则命中域名仍通过 DNS 规则走 `remote-doh`。远端 DoH 会显式使用 `direct-dns` 解析自身域名，再通过代理出站拨号，避免 `dns.google` 的自举连接按直连拨出。DNS 重定向默认开启，透明代理防火墙规则应用后会把受管设备的 53 端口导入 sing-box DNS。
+- DNS 页使用预设下拉加自定义兜底：直连 TCP DNS + 代理域名 DoH；模式决定默认解析器。IPv4/IPv6 DNS 同时接管，用户覆盖优先，基础 proxy 优先于 direct，本地域名交回 dnsmasq。详见架构中的 DNS 策略。
 - Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
 - Rules 页改为 Loyalsoldier clash-rules + sing-box GeoIP rule-set 基础规则体系，不随包内置规则数据，也不内置去广告规则。用户需要显式更新规则，后端将 `direct/private/cncidr/lancidr` 合成为直连域名/CIDR rule-set，将 `proxy/gfw/tld-not-cn/telegramcidr` 合成为代理域名/CIDR rule-set，并额外下载 MetaCubeX 的 `geoip-cn/google/facebook/twitter/telegram` `.srs` 供裸 IP 分流使用；页面只暴露黑名单/白名单模式和少量用户覆盖规则，默认出站与代理出站由模式自动决定。
 - 黑名单模式保持“命中 Proxy 才代理，命中 Direct 或未命中则直连”。透明代理不会因为目标是 TCP/443 就默认代理；HTTPS 代理判断依赖 DNS 劫持带来的域名、TLS/HTTP sniff、基础域名规则和 GeoIP rule-set 命中。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被直连规则提前截走。域名规则未命中时，会先用直连 DNS 解析一次，再用 GeoIP rule-set 对解析出的地址复判，避免 Google/Meta 等裸 IP 被落到默认直连。
-- Rules 页提供测试策略入口，可输入域名或 IP，按当前模式、用户规则、基础规则集和默认出站判断最终走 Proxy 还是 Direct，并显示命中原因。
-- Rules 页支持用户直连/代理 IP 或 CIDR。透明代理转发已应用且 iptables/ipset 可用时，Stargate 会把基础 direct rule-set 中的 IPv4 CIDR、常见内网段和用户直连 IP/CIDR 放进防火墙绕过集合，能在 IP 层确定直连的目标不会进入 sing-box；Google、Facebook、Twitter/X、Telegram 等裸 IP 由 GeoIP proxy `.srs` 在 sing-box 路由层判定走节点，当前内置补充 Twitter/X 上游漏掉的 `104.244.43.0/24` 和已观测 AWS 新加坡裸 IP 段 `175.41.128.0/18`，不在前端暴露为常规选项；用户代理 IP/CIDR 只用于少量例外补充。
+- Rules 页提供域名/IP 策略测试。域名结果明确不包含目标 IP 复判或真实连接验证；未命中域名规则时返回需要解析，不把兜底猜测显示成已验证结果。
+- Rules 页支持用户直连/代理 IPv4 IP/CIDR，由 sing-box 统一判定；防火墙仅绕过私网/保留地址。基础 GeoIP 补充仍包含 `104.244.43.0/24`、`175.41.128.0/18`，并在域名解析后重新检查。
 - 阻断 QUIC 默认开启，在防火墙转发层拒绝受管 LAN 设备的 `UDP/443`，使浏览器或应用回退到 TCP/TLS。该选项只处理 `UDP/443`，不会影响其他 UDP 端口或把普通直连 IP 改成代理。
-- 透明代理防火墙规则参考 PassWall2 的链插入经验：Stargate 的 PREROUTING 和 FORWARD 入口必须插到链前部，避免被 fw3/fw4 或桥接场景中已有的 ACCEPT 规则提前放行。DNS 重定向规则必须排在通用 TCP 透明代理规则之前，否则 TCP/53 会被错误送入透明代理端口。当前 redirect 模式只处理 IPv4 TCP，公网 IPv6 通过独立 guard 阻断，避免未代理的 IPv6 直连泄漏。
+- nft NAT PREROUTING 为 -110，DNS 在通用 TCP 重定向前；IPv6/QUIC guard 为 PREROUTING -10，避免 NetBird 的外部 FORWARD 自动放行。iptables fallback 仍使用既有链前插逻辑，NetBird guard 兼容性未验收。
 - `docs/reference/deployment-notes.md` 记录当前实机部署、分流验证、DNS、QUIC、防火墙和日志排障经验，便于换机器部署时按清单复核。
 
 ## 当前实机状态
@@ -122,4 +135,4 @@ curl --socks5-hostname 127.0.0.1:10808 https://www.cloudflare.com/cdn-cgi/trace
 
 ## 下一步
 
-下一步优先根据实际页面体验调整 CBI 页面布局，再验证 UCI 保存、配置生成、`sing-box check` 和服务启动。任何会改变系统网络行为的能力都必须默认关闭，并有预检和回滚。
+下一步按 [NetBird 出口设计](reference/netbird-exit-node.md) 配置测试组、默认路由和专用 DNS；先由远端测试客户端手动选择 S20M，验证入口权限、出口分流、IPv6/QUIC、私网互通及重连后行为，再决定是否扩大启用范围。

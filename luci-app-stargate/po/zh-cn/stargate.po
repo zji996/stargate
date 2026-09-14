@@ -421,6 +421,12 @@ msgstr "DNS 劫持"
 msgid "DNS redirect"
 msgstr "DNS 重定向"
 
+msgid "Follows rule mode: Direct for blacklist/direct, Remote for whitelist/global proxy."
+msgstr "跟随分流模式：黑名单／仅直连使用直连 DNS，白名单／全局代理使用远端 DNS。"
+
+msgid "Redirect IPv4 and IPv6 DNS for managed devices. Local domains use dnsmasq; other queries follow rule priority."
+msgstr "接管受管设备的 IPv4 和 IPv6 DNS。内网域名交给 dnsmasq，其余查询按分流优先级解析。"
+
 msgid "Force managed devices to use Stargate DNS when transparent proxy firewall rules are applied."
 msgstr "应用透明代理防火墙规则时，强制受管设备使用 Stargate DNS。"
 

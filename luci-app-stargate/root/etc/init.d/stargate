@@ -26,6 +26,8 @@ stop_service() {
 
 service_triggers() {
   procd_add_reload_trigger stargate
+  # Refresh the bound IPv6 DNS address when LAN comes up or is renumbered.
+  procd_add_interface_trigger "interface.*" "lan" /etc/init.d/stargate reload
 }
 
 start_service() {

@@ -16,6 +16,13 @@ firewall_managed_ifaces() {
   } | awk 'NF && !seen[$0]++'
 }
 
+firewall_dns_ipv6_address() {
+  # Prefer the stable LAN ULA over a delegated prefix that may be renumbered.
+  firewall_lan_ifaces | while read -r iface; do
+    ip -6 addr show dev "$iface" scope global 2>/dev/null | awk '/inet6 / { split($2, addr, "/"); print addr[1] }'
+  done | awk '/^f[cd]/ { print; found=1; exit } !first { first=$0 } END { if (!found && first) print first }'
+}
+
 firewall_lan_ipv6_status() {
   dhcpv6="$(uci -q get dhcp.lan.dhcpv6 2>/dev/null || true)"
   ra="$(uci -q get dhcp.lan.ra 2>/dev/null || true)"
@@ -78,6 +85,36 @@ firewall_clean_ip6tables() {
   ip6tables -X STARGATE_IPV6 2>/dev/null || true
 }
 
+firewall_clean_ip6tables_dns() {
+  command -v ip6tables >/dev/null 2>&1 || return 0
+  ip6tables -t nat -S PREROUTING 2>/dev/null | grep 'STARGATE_DNS6' | sed 's/^-A /-D /' | while read -r rule; do
+    ip6tables -t nat $rule 2>/dev/null || true
+  done
+  ip6tables -t nat -F STARGATE_DNS6 2>/dev/null || true
+  ip6tables -t nat -X STARGATE_DNS6 2>/dev/null || true
+}
+
+firewall_apply_ip6tables_dns() {
+  [ "$dns_hijack" = "1" ] || return 0
+  [ -n "$dns_ipv6_address" ] || return 0
+  command -v ip6tables >/dev/null 2>&1 && ip6tables -t nat -S >/dev/null 2>&1 || {
+    echo "IPv6 DNS redirect requires ip6tables IPv6 NAT support" >&2
+    return 1
+  }
+  ip6tables -t nat -N STARGATE_DNS6 || return 1
+  if [ "$netbird_proxy" = "1" ]; then
+    for cidr in fc00::/7 fe80::/10; do
+      ip6tables -t nat -A STARGATE_DNS6 -i "$netbird_interface" -d "$cidr" -m addrtype ! --dst-type LOCAL -j RETURN || return 1
+    done
+  fi
+  ip6tables -t nat -A STARGATE_DNS6 -p udp --dport 53 -j DNAT --to-destination "[$dns_ipv6_address]:$dns_hijack_port" || return 1
+  ip6tables -t nat -A STARGATE_DNS6 -p tcp --dport 53 -j DNAT --to-destination "[$dns_ipv6_address]:$dns_hijack_port" || return 1
+  firewall_managed_ifaces | while read -r iface; do
+    ip6tables -t nat -I PREROUTING 1 -i "$iface" -p udp --dport 53 -j STARGATE_DNS6 || exit 1
+    ip6tables -t nat -I PREROUTING 1 -i "$iface" -p tcp --dport 53 -j STARGATE_DNS6 || exit 1
+  done
+}
+
 firewall_apply_iptables() {
   command -v iptables >/dev/null 2>&1 || {
     echo "iptables is required for this firewall backend" >&2
@@ -89,6 +126,8 @@ firewall_apply_iptables() {
   }
 
   firewall_clean_iptables
+  firewall_clean_ip6tables_dns
+  firewall_apply_ip6tables_dns || return 1
   iptables -t nat -N STARGATE_DNS
   iptables -t nat -N STARGATE_TCP
   if [ "$rules_block_quic" = "1" ]; then
@@ -108,7 +147,7 @@ firewall_apply_iptables() {
 
   if [ "$netbird_proxy" = "1" ]; then
     for cidr in 10.0.0.0/8 100.64.0.0/10 172.16.0.0/12 192.168.0.0/16; do
-      iptables -t nat -A STARGATE_DNS -i "$netbird_interface" -d "$cidr" -j RETURN
+      iptables -t nat -A STARGATE_DNS -i "$netbird_interface" -d "$cidr" -m addrtype ! --dst-type LOCAL -j RETURN
     done
   fi
   iptables -t nat -A STARGATE_DNS -p udp --dport 53 -j REDIRECT --to-ports "$dns_hijack_port"
@@ -213,10 +252,8 @@ firewall_direct_bypass_cidrs() {
     for cidr in 0.0.0.0/8 10.0.0.0/8 100.64.0.0/10 127.0.0.0/8 169.254.0.0/16 172.16.0.0/12 192.168.0.0/16 224.0.0.0/4 240.0.0.0/4; do
       printf '%s\n' "$cidr"
     done
-    parse_ipv4_cidrs "$rules_custom_direct_ips"
-    if [ "$mode" = "all" ]; then
-      rule_set_ipv4_cidrs "$rules_direct_rule_set"
-    fi
+    # Public CIDRs must reach sing-box: their domain may have a proxy override.
+    # This set only protects local/reserved destinations, in every routing mode.
   } | awk '!seen[$0]++'
 }
 
@@ -286,16 +323,24 @@ table inet stargate {
 $direct_set_block
   chain prerouting {
     type nat hook prerouting priority dstnat - 10; policy accept;
-    iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
+    iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } fib daddr type != local counter return comment "Stargate overlay private bypass"
+    iifname "$netbird_interface" ip6 daddr { fc00::/7, fe80::/10 } fib daddr type != local counter return comment "Stargate overlay private bypass"
     iifname { $iface_set } meta nfproto ipv4 udp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
     iifname { $iface_set } meta nfproto ipv4 tcp dport 53 counter redirect to :$dns_hijack_port comment "Stargate DNS redirect"
+    iifname { $iface_set } meta nfproto ipv6 udp dport 53 counter dnat ip6 to [$dns_ipv6_address]:$dns_hijack_port comment "Stargate DNS redirect"
+    iifname { $iface_set } meta nfproto ipv6 tcp dport 53 counter dnat ip6 to [$dns_ipv6_address]:$dns_hijack_port comment "Stargate DNS redirect"
 $direct_ip_return
     iifname { $iface_set } meta nfproto ipv4 meta l4proto tcp counter redirect to :$transparent_port comment "Stargate transparent redirect"
   }
-  chain forward {
-    type filter hook forward priority filter - 10; policy accept;
+  # After all DNAT hooks: the kernel may share NAT hook registration across
+  # tables, so a filter between NAT priorities can still see the old address.
+  # NetBird only inserts
+  # external INPUT/FORWARD accepts, so it cannot bypass this guard.
+  chain guard {
+    type filter hook prerouting priority filter - 10; policy accept;
+    ct direction reply counter return comment "Stargate reply bypass"
+    fib daddr type local counter return comment "Stargate local input"
     iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
-    oifname "$netbird_interface" ct state established,related counter return comment "Stargate overlay reply bypass"
     iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } counter return comment "Stargate local IPv6"
     iifname { $iface_set } meta nfproto ipv6 counter reject comment "Stargate IPv6 guard"
     iifname { $iface_set } udp dport 443 counter reject comment "Stargate QUIC block"
@@ -304,6 +349,9 @@ $direct_ip_return
 EOF
   if [ "$dns_hijack" != "1" ]; then
     sed -i '/dport 53/d' "$tmp_nft"
+  fi
+  if [ -z "$dns_ipv6_address" ]; then
+    sed -i '/dnat ip6 to/d' "$tmp_nft"
   fi
   if [ "$netbird_proxy" != "1" ]; then
     sed -i '/Stargate overlay .* bypass/d' "$tmp_nft"
@@ -366,6 +414,7 @@ firewall_clean() {
   firewall_clean_nft
   firewall_clean_iptables
   firewall_clean_ip6tables
+  firewall_clean_ip6tables_dns
   echo "firewall cleaned"
 }
 

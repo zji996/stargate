@@ -48,11 +48,12 @@ Status: In Progress
 
 ## 第六阶段：显式网络接管能力
 
-Status: Not Implemented
+Status: In Progress
 
 - 只代理路由器本机流量。
-- 透明代理模式。
-- 分流规则。
-- nftables/iptables 预检、dry-run 和失败回滚。
+- 已实现 IPv4 TCP 透明代理、IPv4/IPv6 DNS 接管与分流；透明代理默认关闭。
+- nftables 预检与事务替换已实现，S20M 验证通过；iptables fallback 的新增 IPv6 DNS 路径尚未实机验收。
+- NetBird exit node：数据面基础已部署，控制台发布和远端完整验收尚未执行，见 [出口设计](reference/netbird-exit-node.md)。
+- 完整 UDP/公网 IPv6 代理，以及 LAN/NetBird 独立策略仍未实现。
 
 这些能力必须默认关闭，不能在没有明确确认时停止、替换或接管其他网络服务。

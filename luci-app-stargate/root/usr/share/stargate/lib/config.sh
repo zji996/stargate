@@ -7,6 +7,8 @@ write_dns_servers() {
   esc_detour="$(printf '%s' "$dns_remote_detour" | json_escape)"
 
   printf '      { "tag": "local", "type": "local" },\n'
+  # Use dnsmasq explicitly: the system resolver may belong to NetBird.
+  printf '      { "tag": "lan-dns", "type": "tcp", "server": "127.0.0.1", "server_port": %s },\n' "$dns_lan_port"
   if [ "$dns_local_type" = "https" ]; then
     printf '      { "tag": "direct-dns", "type": "https", "server": "%s", "path": "%s" },\n' "$esc_local" "$esc_local_path"
   else
@@ -20,10 +22,17 @@ write_dns_servers() {
 }
 
 write_dns_rules() {
+  first=1
+  add_rule "{ $lan_domain_match, \"server\": \"lan-dns\" }"
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
-    printf '      { "rule_set": "direct", "server": "direct-dns" },\n'
-    printf '      { "rule_set": "proxy", "server": "remote-doh" }\n'
+    custom_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" direct-dns server)"
+    [ -z "$custom_rule" ] || add_rule "$custom_rule"
+    custom_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" remote-doh server)"
+    [ -z "$custom_rule" ] || add_rule "$custom_rule"
+    add_rule '{ "rule_set": "proxy", "server": "remote-doh" }'
+    add_rule '{ "rule_set": "direct", "server": "direct-dns" }'
   fi
+  printf '\n'
 }
 
 write_inbounds() {
@@ -62,6 +71,10 @@ write_inbounds() {
       printf '      "override_address": "1.0.0.1",\n'
       printf '      "override_port": 53\n'
       printf '    }'
+      if [ -n "$dns_ipv6_address" ]; then
+        # A fixed UDP source is essential for reverse DNAT on multi-address LANs.
+        printf ',\n    { "type": "direct", "tag": "dns6-in", "listen": "%s", "listen_port": %s, "override_address": "1.0.0.1", "override_port": 53 }' "$dns_ipv6_address" "$dns_hijack_port"
+      fi
     fi
   fi
   printf '\n'
@@ -108,21 +121,44 @@ write_rule_sets() {
   fi
 }
 
-write_route_rules() {
-  first=1
-  add_rule() {
+add_rule() {
     if [ "$first" = 1 ]; then
       first=0
     else
       printf ',\n'
     fi
     printf '      %s' "$1"
-  }
+}
+
+write_user_ip_rules() {
+  custom_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" direct)"
+  [ -z "$custom_rule" ] || add_rule "$custom_rule"
+  custom_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" anytls-out)"
+  [ -z "$custom_rule" ] || add_rule "$custom_rule"
+}
+
+write_base_route_rules() {
+  custom_rule="$(write_inline_ip_rule "$rules_geoip_proxy_extra_cidrs" anytls-out)"
+  [ -z "$custom_rule" ] || add_rule "$custom_rule"
+  add_rule '{ "rule_set": "proxy", "outbound": "anytls-out" }'
+  geoip_index=1
+  for geoip_proxy_rule_set in $(printf '%s' "$rules_geoip_proxy_rule_sets" | tr ',' ' '); do
+    add_rule "{ \"rule_set\": \"geoip-proxy-$geoip_index\", \"outbound\": \"anytls-out\" }"
+    geoip_index=$((geoip_index + 1))
+  done
+  add_rule '{ "rule_set": "direct", "outbound": "direct" }'
+  if [ -n "$rules_geoip_direct_rule_set" ]; then
+    add_rule '{ "rule_set": "geoip-direct", "outbound": "direct" }'
+  fi
+}
+
+write_route_rules() {
+  first=1
 
   if [ "$transparent_proxy" = "1" ]; then
     add_rule '{ "inbound": ["transparent-in"], "action": "sniff", "sniffer": ["tls", "http"], "timeout": "500ms" }'
     if [ "$dns_hijack" = "1" ]; then
-      add_rule '{ "inbound": ["dns-in"], "action": "hijack-dns" }'
+      add_rule '{ "inbound": ["dns-in", "dns6-in"], "action": "hijack-dns" }'
     fi
   fi
   if [ "$rules_block_quic" = "1" ]; then
@@ -131,42 +167,24 @@ write_route_rules() {
   if [ "$rules_private_direct" = "1" ]; then
     add_rule '{ "ip_is_private": true, "outbound": "direct" }'
   fi
-  custom_direct_ip_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" "direct")"
-  geoip_proxy_extra_ip_rule="$(write_inline_ip_rule "$rules_geoip_proxy_extra_cidrs" "anytls-out")"
-  custom_proxy_ip_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" "anytls-out")"
-  [ -z "$custom_direct_ip_rule" ] || add_rule "$custom_direct_ip_rule"
-  [ -z "$custom_proxy_ip_rule" ] || add_rule "$custom_proxy_ip_rule"
-  [ -z "$geoip_proxy_extra_ip_rule" ] || add_rule "$geoip_proxy_extra_ip_rule"
+  add_rule "{ $lan_domain_match, \"action\": \"resolve\", \"server\": \"lan-dns\", \"strategy\": \"$dns_strategy\" }"
+  add_rule "{ $lan_domain_match, \"outbound\": \"direct\" }"
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     custom_direct_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" "direct")"
     custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "anytls-out")"
     [ -z "$custom_direct_rule" ] || add_rule "$custom_direct_rule"
+    custom_direct_ip_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" direct)"
+    [ -z "$custom_direct_ip_rule" ] || add_rule "$custom_direct_ip_rule"
     [ -z "$custom_proxy_rule" ] || add_rule "$custom_proxy_rule"
-    add_rule '{ "rule_set": "proxy", "outbound": "anytls-out" }'
-    geoip_index=1
-    printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_proxy_rule_set; do
-      [ -n "$geoip_proxy_rule_set" ] || continue
-      add_rule "{ \"rule_set\": \"geoip-proxy-$geoip_index\", \"outbound\": \"anytls-out\" }"
-      geoip_index=$((geoip_index + 1))
-    done
-    add_rule '{ "rule_set": "direct", "outbound": "direct" }'
-    if [ -n "$rules_geoip_direct_rule_set" ]; then
-      add_rule '{ "rule_set": "geoip-direct", "outbound": "direct" }'
+    custom_proxy_ip_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" anytls-out)"
+    [ -z "$custom_proxy_ip_rule" ] || add_rule "$custom_proxy_ip_rule"
+    write_base_route_rules
+    add_rule "{ \"action\": \"resolve\", \"server\": \"$dns_final\", \"strategy\": \"$dns_strategy\" }"
+    if [ "$rules_private_direct" = "1" ]; then
+      add_rule '{ "ip_is_private": true, "outbound": "direct" }'
     fi
-    if [ -n "$rules_geoip_direct_rule_set" ] || [ -n "$rules_geoip_proxy_rule_sets" ]; then
-      add_rule "{ \"action\": \"resolve\", \"server\": \"direct-dns\", \"strategy\": \"$dns_strategy\" }"
-      add_rule '{ "rule_set": "proxy", "outbound": "anytls-out" }'
-      geoip_index=1
-      printf '%s\n' "$rules_geoip_proxy_rule_sets" | tr ', \t' '\n\n\n' | while IFS= read -r geoip_proxy_rule_set; do
-        [ -n "$geoip_proxy_rule_set" ] || continue
-        add_rule "{ \"rule_set\": \"geoip-proxy-$geoip_index\", \"outbound\": \"anytls-out\" }"
-        geoip_index=$((geoip_index + 1))
-      done
-      add_rule '{ "rule_set": "direct", "outbound": "direct" }'
-      if [ -n "$rules_geoip_direct_rule_set" ]; then
-        add_rule '{ "rule_set": "geoip-direct", "outbound": "direct" }'
-      fi
-    fi
+    write_user_ip_rules
+    write_base_route_rules
     if [ "$rules_mode" = "blacklist" ]; then
       rules_default_outbound="direct"
     else
@@ -184,6 +202,7 @@ generate_config() {
   load_config
   validate_config
   mkdir -p "$work_dir"
+  lan_domain_match="$(write_lan_domain_match)"
 
   esc_server="$(printf '%s' "$node_server" | json_escape)"
   esc_password="$(printf '%s' "$node_password" | json_escape)"
