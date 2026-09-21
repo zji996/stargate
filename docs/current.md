@@ -2,18 +2,24 @@
 
 ## 当前目标
 
-多出口分流与独立代理入站端口已在仓库实现并通过本地与容器验证，待实机部署验收；IPv6 DNS 与分流优先级保持既有保障。下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
+多出口分流与独立代理入站端口已完成入站/出站解耦、可用端口自动错开推荐机制，并已部署至实机 192.168.6.1 验证通过；IPv6 DNS 与分流优先级保持既有保障。下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
+
+## 2026-09-22 更新
+
+- 完成独立端口改动复审并修复换绑失败时可能污染 UCI 暂存状态的问题：现在先校验目标节点、原节点、端口和监听地址，再一次性清理旧绑定并写入新绑定；允许换绑时沿用原端口。
+- 节点端口测试补充失败换绑不改动原节点及沿用原端口用例；公共端口校验与浏览器端校验拒绝非数字后缀和前导零，避免生成非法 JSON 数字或绕过冲突比较。
+- CBI 弹窗将节点下拉框纳入表单归属、标签关联和焦点循环；脚本内嵌节点信息增加安全转义。维护页与节点弹窗颜色改为跟随 LuCI 主题，并修正移动端备份区选择器。
+- 已重新同步至 `192.168.6.1`。本轮部署前备份为 `/root/stargate-review-20260922-003957/backup-files.tar.gz`；13 组部署文件 MD5 与本地一致，Shell/Lua 加载、`node-next-ports`、13 列 `node-list`、`check`、JSON 状态解析和 UCI 暂存检查均通过。服务保持 `running`（sing-box 1.12.25），Baidu 为 HTTP 200（175ms），Google 为 HTTP 204（375ms）。
 
 ## 2026-09-21 更新
 
-- 实现多出口分流与节点独立入站代理端口（Dedicated Port），尚未实机部署验收：
+- 完成多出口分流与节点入站/出站解耦、独立分流端口（Dedicated Port）自动错开推荐与实机部署：
   - 核心分流架构遵循“直连规则全局共用，代理规则按入站映射到对应出口”。
-  - 节点项（`node_item`）支持配置 `enable_port`、`socks_port`、`http_port`、`listen`。添加/编辑节点时即校验监听地址格式，并拒绝与主 SOCKS/HTTP、透明代理、DNS 劫持端口或其他节点独立端口冲突；生成配置时再次校验。
-  - sing-box `inbounds` 为启用独立端口的节点创建 `in-socks-<id>` / `in-http-<id>`；与当前节点（server/port/password 相同）的节点复用 `anytls-out`，其余节点生成 `out-node-<id>` AnyTLS 出站。匿名 UCI section 会被跳过。
-  - 分流规则在保持全局私网、局域网和国内直连的前提下，将辅助端口进来的 proxy 规则、海外 GeoIP 规则以及二次 DNS 解析判定结果，精确导向对应的辅助节点出口；主入站和复用主节点的入站流向 `anytls-out`。`global_proxy` 下辅助端口全部走对应节点，`direct` 下仍开端口但全部直连。
-  - LuCI CBI 节点弹窗与 JS view 支持独立端口配置，`status` JSON 增加 `aux_nodes`，概览显示已开放的独立端口；监听 `0.0.0.0` 会在表单提示保持防火墙 WAN 入站关闭，Stargate 不额外添加防火墙规则。
-  - `tests/routing.sh` / `tests/routing.py` 覆盖四种模式下的多入站判定、主节点别名、匿名 section、端口冲突和监听地址负向用例。`manage.sh check` 在缺少 lua 时可回退到已存在的 `nickblah/lua:5.1` Docker 镜像做 Lua 语法检查。
-  - 本地验证：`manage.sh check` 通过；四种模式生成配置经 sing-box v1.12.4 `check` 通过；在 `openwrt/rootfs` 容器中用真实 `uci` 验证了节点增改、冲突拒绝、`node-list`、`generate` 与 `status`。实机 S20M 尚未部署本次改动。
+  - 端口防冲突与自动错开：新增 `node-next-ports` 自动扫描主入站、透明代理、DNS 劫持、其他节点独立端口以及系统监听端口（`/proc/net/tcp`），自动推荐连续可用的端口对（如 `10818/10819`、`10820/10821`）；前端表单提供实时冲突比对校验与保存拦截。
+  - 出站与入站彻底解耦：节点卡片仅作为出站池（增删改查出口凭据），节点编辑弹窗剥离端口字段；节点下方新增“分流与入站端口”（Inbound Ports）独立卡片，上部整合主入站配置与当前激活节点绑定说明，下部提供独立分流端口表格与“+ 添加独立端口”弹窗，支持按端口设置用途/备注，并可随时切换绑定的出口节点而自动解绑旧节点。
+  - 节点编辑保护：`node_update` 在无端口参数传入时自动保留已有独立端口配置，避免编辑节点属性时误清空独立端口。
+  - LuCI CBI / JS view 同步支持：`node.lua`、`node.js`、`overview.lua`、`overview.js`、`stargate.po` / `stargate.pot` 同步更新，概览页显示独立端口与端口用途。
+  - 验证：本地测试集增加 `tests/nodes.sh`，`manage.sh check` 全套（Shell、Docs、JSON、JS、i18n、Routing、Firewall、Nodes）通过。已部署至实机 `192.168.6.1`，部署前备份位于 `/root/stargate-deploy-20260921-235021/backup-files.tar.gz`；实机验证 `node-next-ports`、`node-list`、`check`、`status`、Lua 语法及 Baidu (HTTP 200) / Google (HTTP 204) 探测均正常。
 
 ## 2026-09-14 更新
 
