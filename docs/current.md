@@ -10,6 +10,7 @@
 - 节点端口测试补充失败换绑不改动原节点及沿用原端口用例；公共端口校验与浏览器端校验拒绝非数字后缀和前导零，避免生成非法 JSON 数字或绕过冲突比较。
 - CBI 弹窗将节点下拉框纳入表单归属、标签关联和焦点循环；脚本内嵌节点信息增加安全转义。维护页与节点弹窗颜色改为跟随 LuCI 主题，并修正移动端备份区选择器。
 - 修复节点切换/删除提交时重复追加 `node_id`，导致 LuCI 将字段解析为数组并在 Lua `:match()` 处抛出运行时异常的问题；前端改为复用隐藏字段，CBI 后端同时归一化重复表单值。热修前备份为 `/root/stargate-node-form-fix-20260922-005706/backup-files.tar.gz`。
+- 修复 `node-use` 只更新 UCI、不生成配置也不重启服务的问题。启用状态下选择节点现在立即执行 `apply-runtime`；失败时恢复原主节点 UCI，并再次同步旧运行态，避免页面选择与 sing-box 实际出口分裂。修复前实机 UCI 已选择 `179.255.98.231`，但 `/etc/stargate/config.json` 仍运行 `69.63.200.32`；部署前备份为 `/root/stargate-node-runtime-fix-20260922-011026/backup-files.tar.gz`。重新应用后 UCI、状态接口和 `anytls-out` 均为 `179.255.98.231`，服务及 nft 防火墙正常，`check` 通过，Baidu 为 HTTP 200（165ms），Google 为 HTTP 204（360ms）。
 - 已重新同步至 `192.168.6.1`。本轮部署前备份为 `/root/stargate-review-20260922-003957/backup-files.tar.gz`；13 组部署文件 MD5 与本地一致，Shell/Lua 加载、`node-next-ports`、13 列 `node-list`、`check`、JSON 状态解析和 UCI 暂存检查均通过。服务保持 `running`（sing-box 1.12.25），Baidu 为 HTTP 200（175ms），Google 为 HTTP 204（375ms）。
 
 ## 2026-09-21 更新
