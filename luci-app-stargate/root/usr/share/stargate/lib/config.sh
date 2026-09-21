@@ -77,7 +77,83 @@ write_inbounds() {
       fi
     fi
   fi
+  for aux_id in ${aux_node_ids:-}; do
+    eval "aux_socks=\${aux_socks_port_$aux_id:-}"
+    eval "aux_http=\${aux_http_port_$aux_id:-}"
+    eval "aux_listen=\${aux_listen_$aux_id:-0.0.0.0}"
+    esc_aux_listen="$(printf '%s' "$aux_listen" | json_escape)"
+    if [ -n "$aux_socks" ]; then
+      printf ',\n'
+      printf '    {\n'
+      printf '      "type": "socks",\n'
+      printf '      "tag": "in-socks-%s",\n' "$aux_id"
+      printf '      "listen": "%s",\n' "$esc_aux_listen"
+      printf '      "listen_port": %s\n' "$aux_socks"
+      printf '    }'
+    fi
+    if [ -n "$aux_http" ]; then
+      printf ',\n'
+      printf '    {\n'
+      printf '      "type": "http",\n'
+      printf '      "tag": "in-http-%s",\n' "$aux_id"
+      printf '      "listen": "%s",\n' "$esc_aux_listen"
+      printf '      "listen_port": %s\n' "$aux_http"
+      printf '    }'
+    fi
+  done
   printf '\n'
+}
+
+# JSON list of the dedicated inbound tags of one node, e.g. "in-socks-x", "in-http-x".
+aux_inbound_tags() {
+  eval "tags_socks=\${aux_socks_port_$1:-}"
+  eval "tags_http=\${aux_http_port_$1:-}"
+  tags=""
+  [ -z "$tags_socks" ] || tags="\"in-socks-$1\""
+  if [ -n "$tags_http" ]; then
+    [ -z "$tags" ] || tags="$tags, "
+    tags="$tags\"in-http-$1\""
+  fi
+  printf '%s' "$tags"
+}
+
+# Outbound tag used by one dedicated-port node; anytls-out when it is the active node.
+aux_outbound_tag() {
+  eval "printf '%s' \"\${aux_outbound_$1:-out-node-$1}\""
+}
+
+# Nodes that need their own inbound-scoped route rules. A node mapped to
+# anytls-out is already covered by the unscoped main rules.
+aux_route_ids() {
+  for route_id in ${aux_node_ids:-}; do
+    [ "$(aux_outbound_tag "$route_id")" != "anytls-out" ] || continue
+    printf '%s\n' "$route_id"
+  done
+}
+
+# add_aux_rule <id> <rule body without the leading "{ ">
+add_aux_rule() {
+  aux_tags="$(aux_inbound_tags "$1")"
+  [ -n "$aux_tags" ] || return 0
+  add_rule "{ \"inbound\": [$aux_tags], $2"
+}
+
+# Emit an inline domain/IP rule scoped to one dedicated node.
+# add_aux_inline_rule <id> <domain|ip> <list>
+add_aux_inline_rule() {
+  case "$2" in
+    domain) aux_inline="$(write_inline_domain_rule "$3" "$(aux_outbound_tag "$1")")" ;;
+    *) aux_inline="$(write_inline_ip_rule "$3" "$(aux_outbound_tag "$1")")" ;;
+  esac
+  [ -n "$aux_inline" ] || return 0
+  add_aux_rule "$1" "${aux_inline#\{ }"
+}
+
+# Unmatched traffic from dedicated inbounds follows its own node (whitelist / global proxy).
+write_aux_fallback_rules() {
+  for aux_id in $(aux_route_ids); do
+    add_aux_rule "$aux_id" "\"outbound\": \"$(aux_outbound_tag "$aux_id")\" }"
+  done
 }
 
 write_rule_sets() {
@@ -133,11 +209,27 @@ add_rule() {
 write_user_ip_rules() {
   custom_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" direct)"
   [ -z "$custom_rule" ] || add_rule "$custom_rule"
+  for aux_id in $(aux_route_ids); do
+    add_aux_inline_rule "$aux_id" ip "$rules_custom_proxy_ips"
+  done
   custom_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" anytls-out)"
   [ -z "$custom_rule" ] || add_rule "$custom_rule"
 }
 
 write_base_route_rules() {
+  # Dedicated inbounds first so proxy hits bind to their own node before the
+  # unscoped main rules below catch them.
+  for aux_id in $(aux_route_ids); do
+    aux_out="$(aux_outbound_tag "$aux_id")"
+    add_aux_inline_rule "$aux_id" ip "$rules_geoip_proxy_extra_cidrs"
+    add_aux_rule "$aux_id" "\"rule_set\": \"proxy\", \"outbound\": \"$aux_out\" }"
+    geoip_index=1
+    for geoip_proxy_rule_set in $(printf '%s' "$rules_geoip_proxy_rule_sets" | tr ',' ' '); do
+      add_aux_rule "$aux_id" "\"rule_set\": \"geoip-proxy-$geoip_index\", \"outbound\": \"$aux_out\" }"
+      geoip_index=$((geoip_index + 1))
+    done
+  done
+
   custom_rule="$(write_inline_ip_rule "$rules_geoip_proxy_extra_cidrs" anytls-out)"
   [ -z "$custom_rule" ] || add_rule "$custom_rule"
   add_rule '{ "rule_set": "proxy", "outbound": "anytls-out" }'
@@ -171,10 +263,15 @@ write_route_rules() {
   add_rule "{ $lan_domain_match, \"outbound\": \"direct\" }"
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     custom_direct_rule="$(write_inline_domain_rule "$rules_custom_direct_domains" "direct")"
-    custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "anytls-out")"
     [ -z "$custom_direct_rule" ] || add_rule "$custom_direct_rule"
     custom_direct_ip_rule="$(write_inline_ip_rule "$rules_custom_direct_ips" direct)"
     [ -z "$custom_direct_ip_rule" ] || add_rule "$custom_direct_ip_rule"
+
+    for aux_id in $(aux_route_ids); do
+      add_aux_inline_rule "$aux_id" domain "$rules_custom_proxy_domains"
+      add_aux_inline_rule "$aux_id" ip "$rules_custom_proxy_ips"
+    done
+    custom_proxy_rule="$(write_inline_domain_rule "$rules_custom_proxy_domains" "anytls-out")"
     [ -z "$custom_proxy_rule" ] || add_rule "$custom_proxy_rule"
     custom_proxy_ip_rule="$(write_inline_ip_rule "$rules_custom_proxy_ips" anytls-out)"
     [ -z "$custom_proxy_ip_rule" ] || add_rule "$custom_proxy_ip_rule"
@@ -188,9 +285,11 @@ write_route_rules() {
     if [ "$rules_mode" = "blacklist" ]; then
       rules_default_outbound="direct"
     else
+      write_aux_fallback_rules
       rules_default_outbound="anytls-out"
     fi
   elif [ "$rules_mode" = "global_proxy" ]; then
+    write_aux_fallback_rules
     rules_default_outbound="anytls-out"
   elif [ "$rules_mode" = "direct" ]; then
     rules_default_outbound="direct"
@@ -263,7 +362,41 @@ EOF
         "enabled": true,
         "insecure": $(bool_json "$node_insecure")$tls_server_name
       }
-    },
+    }
+EOF
+    for aux_id in $(aux_route_ids); do
+      eval "aux_server=\${aux_server_$aux_id:-}"
+      eval "aux_port=\${aux_port_$aux_id:-443}"
+      eval "aux_password=\${aux_password_$aux_id:-}"
+      eval "aux_sni=\${aux_sni_$aux_id:-}"
+      eval "aux_insecure=\${aux_insecure_$aux_id:-1}"
+      esc_aux_server="$(printf '%s' "$aux_server" | json_escape)"
+      esc_aux_password="$(printf '%s' "$aux_password" | json_escape)"
+      esc_aux_sni="$(printf '%s' "$aux_sni" | json_escape)"
+      aux_tls_server_name=""
+      if [ -n "$aux_sni" ]; then
+        aux_tls_server_name=", \"server_name\": \"$esc_aux_sni\""
+      fi
+      cat <<EOF
+,
+    {
+      "type": "anytls",
+      "tag": "$(aux_outbound_tag "$aux_id")",
+      "server": "$esc_aux_server",
+      "server_port": $aux_port,
+      "password": "$esc_aux_password",
+      "idle_session_check_interval": "30s",
+      "idle_session_timeout": "30s",
+      "min_idle_session": 5,
+      "tls": {
+        "enabled": true,
+        "insecure": $(bool_json "$aux_insecure")$aux_tls_server_name
+      }
+    }
+EOF
+    done
+    cat <<EOF
+,
     { "type": "direct", "tag": "direct" },
     { "type": "block", "tag": "block" }
   ],

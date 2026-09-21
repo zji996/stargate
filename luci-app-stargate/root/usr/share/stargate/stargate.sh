@@ -26,9 +26,9 @@ Usage:
   /usr/share/stargate/stargate.sh firewall-status
   /usr/share/stargate/stargate.sh firewall-apply-rules
   /usr/share/stargate/stargate.sh probe baidu|google|github
-  /usr/share/stargate/stargate.sh node-add label server port password sni insecure
+  /usr/share/stargate/stargate.sh node-add label server port password sni insecure [enable_port socks_port http_port listen]
   /usr/share/stargate/stargate.sh node-add-link anytls://...
-  /usr/share/stargate/stargate.sh node-update id label server port password sni insecure
+  /usr/share/stargate/stargate.sh node-update id label server port password sni insecure [enable_port socks_port http_port listen]
   /usr/share/stargate/stargate.sh node-list
   /usr/share/stargate/stargate.sh node-use id
   /usr/share/stargate/stargate.sh node-delete id
@@ -73,9 +73,9 @@ case "$action" in
   firewall-clean) firewall_clean ;;
   firewall-status) firewall_status_text ;;
   probe) probe_url "${2:-}" ;;
-  node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" ;;
+  node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" "${8:-0}" "${9:-}" "${10:-}" "${11:-0.0.0.0}" ;;
   node-add-link) node_add_link "${2:-}" ;;
-  node-update) node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" ;;
+  node-update) node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" "${9:-0}" "${10:-}" "${11:-}" "${12:-0.0.0.0}" ;;
   node-list) node_list ;;
   node-use) node_use "${2:-}" ;;
   node-delete) node_delete "${2:-}" ;;

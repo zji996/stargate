@@ -32,6 +32,71 @@ validate_port_value() {
   }
 }
 
+validate_listen_address() {
+  value="$1"
+  label="$2"
+  case "$value" in
+    '')
+      echo "$label is required" >&2
+      return 1
+      ;;
+    *[!0-9A-Fa-f:.]*)
+      echo "$label must be an IPv4 or IPv6 address" >&2
+      return 1
+      ;;
+    *:*)
+      # IPv6: hex groups and colons only, at most one "::".
+      case "$value" in
+        *:::*|*::*::*)
+          echo "$label must be an IPv4 or IPv6 address" >&2
+          return 1
+          ;;
+      esac
+      return 0
+      ;;
+    *)
+      old_ifs="$IFS"
+      IFS=.
+      # shellcheck disable=SC2086
+      set -- $value
+      IFS="$old_ifs"
+      [ "$#" -eq 4 ] || {
+        echo "$label must be an IPv4 or IPv6 address" >&2
+        return 1
+      }
+      for octet in "$@"; do
+        case "$octet" in
+          ''|*[!0-9]*)
+            echo "$label must be an IPv4 or IPv6 address" >&2
+            return 1
+            ;;
+        esac
+        [ "$octet" -le 255 ] || {
+          echo "$label must be an IPv4 or IPv6 address" >&2
+          return 1
+        }
+      done
+      return 0
+      ;;
+  esac
+}
+
+# Print one named node_item section id per line. Anonymous sections and ids
+# that are not safe as shell identifiers or sing-box tags are skipped.
+list_node_item_ids() {
+  if [ -n "${UCI_CONFIG_DIR:-}" ]; then
+    node_raw="$(uci -q -c "$UCI_CONFIG_DIR" show "$app" 2>/dev/null || true)"
+  else
+    node_raw="$(uci -q show "$app" 2>/dev/null || true)"
+  fi
+  printf '%s\n' "$node_raw" | sed -n "s/^$app\\.\\([^.=]*\\)=node_item$/\\1/p" | while IFS= read -r node_id; do
+    case "$node_id" in
+      ''|*[!A-Za-z0-9_]*) continue ;;
+    esac
+    printf '%s\n' "$node_id"
+  done
+}
+
 uci_get() {
   if [ -n "${UCI_CONFIG_DIR:-}" ]; then
     uci -q -c "$UCI_CONFIG_DIR" get "$app.$1.$2" 2>/dev/null || printf '%s' "$3"
@@ -86,6 +151,34 @@ load_config() {
   node_password="$(uci_get node password '')"
   node_sni="$(uci_get node sni '')"
   node_insecure="$(uci_get node insecure 1)"
+
+  # Dedicated-port nodes: aux_node_ids only holds node_item sections with
+  # enable_port=1. A node identical to the active node reuses anytls-out
+  # instead of opening a second session pool to the same server.
+  aux_node_ids=""
+  for aux_id in $(list_node_item_ids); do
+    aux_enable="$(bool_value "$(uci_get "$aux_id" enable_port 0)")"
+    [ "$aux_enable" = "1" ] || continue
+    aux_node_ids="$aux_node_ids $aux_id"
+    aux_server="$(uci_get "$aux_id" server '')"
+    aux_port="$(uci_get "$aux_id" server_port 443)"
+    aux_password="$(uci_get "$aux_id" password '')"
+    aux_outbound="out-node-$aux_id"
+    if [ "$aux_server" = "$node_server" ] && [ "$aux_port" = "$node_port" ] && [ "$aux_password" = "$node_password" ]; then
+      aux_outbound="anytls-out"
+    fi
+    eval "aux_enable_port_$aux_id=\"\$aux_enable\""
+    eval "aux_label_$aux_id=\"\$(uci_get \"\$aux_id\" label \"\$aux_id\")\""
+    eval "aux_server_$aux_id=\"\$aux_server\""
+    eval "aux_port_$aux_id=\"\$aux_port\""
+    eval "aux_password_$aux_id=\"\$aux_password\""
+    eval "aux_sni_$aux_id=\"\$(uci_get \"\$aux_id\" sni '')\""
+    eval "aux_insecure_$aux_id=\"\$(uci_get \"\$aux_id\" insecure 1)\""
+    eval "aux_socks_port_$aux_id=\"\$(uci_get \"\$aux_id\" socks_port '')\""
+    eval "aux_http_port_$aux_id=\"\$(uci_get \"\$aux_id\" http_port '')\""
+    eval "aux_listen_$aux_id=\"\$(uci_get \"\$aux_id\" listen 0.0.0.0)\""
+    eval "aux_outbound_$aux_id=\"\$aux_outbound\""
+  done
 
   dns_mode="$(uci_get dns mode tcp_doh)"
   dns_final="$(uci_get dns final direct-dns)"
@@ -173,6 +266,53 @@ validate_config() {
   validate_port_value "$socks_port" "SOCKS port" || exit 1
   validate_port_value "$http_port" "HTTP port" || exit 1
   validate_port_value "$transparent_port" "transparent proxy port" || exit 1
+
+  used_ports="$socks_port $http_port"
+  if [ "$transparent_proxy" = "1" ]; then
+    used_ports="$used_ports $transparent_port"
+    if [ "$dns_hijack" = "1" ]; then
+      used_ports="$used_ports $dns_hijack_port"
+    fi
+  fi
+
+  if [ -n "${aux_node_ids:-}" ]; then
+    for aux_id in $aux_node_ids; do
+      eval "aux_server=\${aux_server_$aux_id:-}"
+      eval "aux_port=\${aux_port_$aux_id:-443}"
+      eval "aux_password=\${aux_password_$aux_id:-}"
+      eval "aux_socks=\${aux_socks_port_$aux_id:-}"
+      eval "aux_http=\${aux_http_port_$aux_id:-}"
+      eval "aux_listen=\${aux_listen_$aux_id:-0.0.0.0}"
+      [ -n "$aux_server" ] || { echo "node server is required for dedicated port node $aux_id" >&2; exit 1; }
+      [ -n "$aux_password" ] || { echo "node password is required for dedicated port node $aux_id" >&2; exit 1; }
+      validate_port_value "$aux_port" "node server port ($aux_id)" || exit 1
+      validate_listen_address "$aux_listen" "dedicated listen address ($aux_id)" || exit 1
+      if [ -z "$aux_socks" ] && [ -z "$aux_http" ]; then
+        echo "at least one port (SOCKS or HTTP) is required for dedicated port node $aux_id" >&2
+        exit 1
+      fi
+      if [ -n "$aux_socks" ]; then
+        validate_port_value "$aux_socks" "auxiliary SOCKS port ($aux_id)" || exit 1
+        for p in $used_ports; do
+          if [ "$p" = "$aux_socks" ]; then
+            echo "dedicated SOCKS port $aux_socks of node $aux_id conflicts with another Stargate port" >&2
+            exit 1
+          fi
+        done
+        used_ports="$used_ports $aux_socks"
+      fi
+      if [ -n "$aux_http" ]; then
+        validate_port_value "$aux_http" "auxiliary HTTP port ($aux_id)" || exit 1
+        for p in $used_ports; do
+          if [ "$p" = "$aux_http" ]; then
+            echo "dedicated HTTP port $aux_http of node $aux_id conflicts with another Stargate port" >&2
+            exit 1
+          fi
+        done
+        used_ports="$used_ports $aux_http"
+      fi
+    done
+  fi
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     direct_runtime_rule_set="$(rule_set_runtime_path "$rules_direct_rule_set")"
     proxy_runtime_rule_set="$(rule_set_runtime_path "$rules_proxy_rule_set")"
