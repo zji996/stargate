@@ -46,6 +46,8 @@ grep -q 'meta nfproto ipv6 udp dport 53.*dnat ip6 to \[fd00::1\]:1053' "$test_di
 grep -q 'meta nfproto ipv6 tcp dport 53.*dnat ip6 to \[fd00::1\]:1053' "$test_dir/batch"
 grep -q 'fib daddr type != local.*overlay private bypass' "$test_dir/batch"
 grep -q 'type filter hook prerouting priority filter - 10' "$test_dir/batch"
+grep -q 'tcp dport 12345 ct status dnat.*return.*Stargate transparent redirected input' "$test_dir/batch"
+grep -q 'tcp dport 12345.*reject.*Stargate transparent input guard' "$test_dir/batch"
 grep -q 'fib daddr type local.*Stargate local input' "$test_dir/batch"
 if grep -q 'hook forward' "$test_dir/batch"; then
   echo 'NetBird can override a forward guard' >&2; exit 1

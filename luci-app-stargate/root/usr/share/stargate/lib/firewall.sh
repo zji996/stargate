@@ -339,6 +339,8 @@ $direct_ip_return
   chain guard {
     type filter hook prerouting priority filter - 10; policy accept;
     ct direction reply counter return comment "Stargate reply bypass"
+    iifname { $iface_set } meta nfproto ipv4 tcp dport $transparent_port ct status dnat counter return comment "Stargate transparent redirected input"
+    iifname { $iface_set } meta nfproto ipv4 tcp dport $transparent_port counter reject comment "Stargate transparent input guard"
     fib daddr type local counter return comment "Stargate local input"
     iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
     iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } counter return comment "Stargate local IPv6"
