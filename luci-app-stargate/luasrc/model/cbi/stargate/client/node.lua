@@ -36,22 +36,38 @@ local function uci_get(section, option, default)
   return value
 end
 
+local function form_value(name, default)
+  local value = http.formvalue(name)
+  if type(value) == "table" then
+    for index = #value, 1, -1 do
+      if type(value[index]) == "string" and value[index] ~= "" then
+        return value[index]
+      end
+    end
+    value = value[#value]
+  end
+  if type(value) ~= "string" then
+    return default or ""
+  end
+  return value
+end
+
 local action = common.action("stargate_node_action")
 local message = nil
 if action == "use" or action == "delete" then
-  local id = http.formvalue("node_id") or ""
+  local id = form_value("node_id")
   if id:match("^[A-Za-z0-9_%-]+$") then
     message = sys.exec("/usr/share/stargate/stargate.sh node-" .. action .. " " .. id .. " 2>&1")
   else
     message = "invalid node id"
   end
 elseif action == "port-set" then
-  local id = http.formvalue("port_node_id") or ""
-  local socks_port = http.formvalue("port_socks") or ""
-  local http_port = http.formvalue("port_http") or ""
-  local listen = http.formvalue("port_listen") or "0.0.0.0"
-  local port_label = http.formvalue("port_label") or ""
-  local old_id = http.formvalue("port_orig_node_id") or ""
+  local id = form_value("port_node_id")
+  local socks_port = form_value("port_socks")
+  local http_port = form_value("port_http")
+  local listen = form_value("port_listen", "0.0.0.0")
+  local port_label = form_value("port_label")
+  local old_id = form_value("port_orig_node_id")
   if id:match("^[A-Za-z0-9_%-]+$") then
     message = sys.exec("/usr/share/stargate/stargate.sh node-port-set " ..
       util.shellquote(id) .. " " ..
@@ -64,19 +80,19 @@ elseif action == "port-set" then
     message = "invalid node id"
   end
 elseif action == "port-remove" then
-  local id = http.formvalue("port_node_id") or ""
+  local id = form_value("port_node_id")
   if id:match("^[A-Za-z0-9_%-]+$") then
     message = sys.exec("/usr/share/stargate/stargate.sh node-port-remove " .. util.shellquote(id) .. " 2>&1")
   else
     message = "invalid node id"
   end
 elseif action == "add" then
-  local label = http.formvalue("add_label") or ""
-  local server = http.formvalue("add_server") or ""
-  local port = http.formvalue("add_port") or ""
-  local password = http.formvalue("add_password") or ""
-  local sni = http.formvalue("add_sni") or ""
-  local insecure = http.formvalue("add_insecure") == "1" and "1" or "0"
+  local label = form_value("add_label")
+  local server = form_value("add_server")
+  local port = form_value("add_port")
+  local password = form_value("add_password")
+  local sni = form_value("add_sni")
+  local insecure = form_value("add_insecure") == "1" and "1" or "0"
   message = sys.exec("/usr/share/stargate/stargate.sh node-add " ..
     util.shellquote(label) .. " " ..
     util.shellquote(server) .. " " ..
@@ -85,16 +101,16 @@ elseif action == "add" then
     util.shellquote(sni) .. " " ..
     util.shellquote(insecure) .. " 2>&1")
 elseif action == "add-link" then
-  local link = http.formvalue("link_uri") or ""
+  local link = form_value("link_uri")
   message = sys.exec("/usr/share/stargate/stargate.sh node-add-link " .. util.shellquote(link) .. " 2>&1")
 elseif action == "edit" then
-  local id = http.formvalue("edit_id") or ""
-  local label = http.formvalue("edit_label") or ""
-  local server = http.formvalue("edit_server") or ""
-  local port = http.formvalue("edit_port") or ""
-  local password = http.formvalue("edit_password") or ""
-  local sni = http.formvalue("edit_sni") or ""
-  local insecure = http.formvalue("edit_insecure") == "1" and "1" or "0"
+  local id = form_value("edit_id")
+  local label = form_value("edit_label")
+  local server = form_value("edit_server")
+  local port = form_value("edit_port")
+  local password = form_value("edit_password")
+  local sni = form_value("edit_sni")
+  local insecure = form_value("edit_insecure") == "1" and "1" or "0"
   message = sys.exec("/usr/share/stargate/stargate.sh node-update " ..
     util.shellquote(id) .. " " ..
     util.shellquote(label) .. " " ..

@@ -26,7 +26,9 @@
     if (!input) { input = document.createElement('input'); input.type = 'hidden'; input.name = field; form.appendChild(input); }
     input.value = button.dataset.stargateAction;
     if (button.dataset.node) {
-      var id = document.createElement('input'); id.type='hidden'; id.name='node_id'; id.value=button.dataset.node; form.appendChild(id);
+      var id = form.querySelector('input[name="node_id"]');
+      if (!id) { id = document.createElement('input'); id.type='hidden'; id.name='node_id'; form.appendChild(id); }
+      id.value=button.dataset.node;
     }
     form.requestSubmit();
   });
