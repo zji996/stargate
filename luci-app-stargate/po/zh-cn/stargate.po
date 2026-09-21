@@ -58,6 +58,36 @@ msgstr "管理 sing-box 路径、后续组件升级和 Stargate 备份还原。"
 msgid "Maintain sing-box paths, future component upgrades, and Stargate backup restore."
 msgstr "维护 sing-box 路径、后续组件升级和 Stargate 备份还原。"
 
+msgid "Dedicated port"
+msgstr "独立端口"
+
+msgid "Dedicated proxy ports"
+msgstr "独立代理端口"
+
+msgid "Give a node its own LAN SOCKS/HTTP port. Domestic and private destinations still go direct; proxied traffic from that port uses this node. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall."
+msgstr "为节点分配专属的局域网 SOCKS/HTTP 端口。国内和私网目标仍然直连；该端口需要代理的流量走这个节点。监听 0.0.0.0 会在所有接口暴露端口，请保持防火墙 WAN 入站关闭。"
+
+msgid "Listen address"
+msgstr "监听地址"
+
+msgid "same as active node"
+msgstr "与当前节点相同"
+
+msgid "0.0.0.0 listens on every interface; keep WAN input closed in the firewall."
+msgstr "0.0.0.0 会监听所有接口，请保持防火墙 WAN 入站关闭。"
+
+msgid "Dedicated inbound port"
+msgstr "开启独立端口"
+
+msgid "Dedicated SOCKS port"
+msgstr "独立 SOCKS 端口"
+
+msgid "Dedicated HTTP port"
+msgstr "独立 HTTP 端口"
+
+msgid "Dedicated proxy ports:"
+msgstr "独立代理端口："
+
 msgid "Runtime maintenance"
 msgstr "运行维护"
 

@@ -45,13 +45,21 @@ elseif action == "add" then
   local password = http.formvalue("add_password") or ""
   local sni = http.formvalue("add_sni") or ""
   local insecure = http.formvalue("add_insecure") == "1" and "1" or "0"
+  local enable_port = http.formvalue("add_enable_port") == "1" and "1" or "0"
+  local socks_port = http.formvalue("add_socks_port") or ""
+  local http_port = http.formvalue("add_http_port") or ""
+  local listen = http.formvalue("add_listen") or "0.0.0.0"
   message = sys.exec("/usr/share/stargate/stargate.sh node-add " ..
     util.shellquote(label) .. " " ..
     util.shellquote(server) .. " " ..
     util.shellquote(port) .. " " ..
     util.shellquote(password) .. " " ..
     util.shellquote(sni) .. " " ..
-    util.shellquote(insecure) .. " 2>&1")
+    util.shellquote(insecure) .. " " ..
+    util.shellquote(enable_port) .. " " ..
+    util.shellquote(socks_port) .. " " ..
+    util.shellquote(http_port) .. " " ..
+    util.shellquote(listen) .. " 2>&1")
 elseif action == "add-link" then
   local link = http.formvalue("link_uri") or ""
   message = sys.exec("/usr/share/stargate/stargate.sh node-add-link " .. util.shellquote(link) .. " 2>&1")
@@ -63,6 +71,10 @@ elseif action == "edit" then
   local password = http.formvalue("edit_password") or ""
   local sni = http.formvalue("edit_sni") or ""
   local insecure = http.formvalue("edit_insecure") == "1" and "1" or "0"
+  local enable_port = http.formvalue("edit_enable_port") == "1" and "1" or "0"
+  local socks_port = http.formvalue("edit_socks_port") or ""
+  local http_port = http.formvalue("edit_http_port") or ""
+  local listen = http.formvalue("edit_listen") or "0.0.0.0"
   message = sys.exec("/usr/share/stargate/stargate.sh node-update " ..
     util.shellquote(id) .. " " ..
     util.shellquote(label) .. " " ..
@@ -70,7 +82,11 @@ elseif action == "edit" then
     util.shellquote(port) .. " " ..
     util.shellquote(password) .. " " ..
     util.shellquote(sni) .. " " ..
-    util.shellquote(insecure) .. " 2>&1")
+    util.shellquote(insecure) .. " " ..
+    util.shellquote(enable_port) .. " " ..
+    util.shellquote(socks_port) .. " " ..
+    util.shellquote(http_port) .. " " ..
+    util.shellquote(listen) .. " 2>&1")
 end
 
 if message then
@@ -108,6 +124,7 @@ function nodes.cfgvalue()
     '.stargate-node-dialog-body{padding:16px}',
     '.stargate-node-dialog-actions{display:flex;justify-content:flex-end;gap:10px;margin-top:16px}',
     '.stargate-node-x{min-width:34px}',
+    '.stargate-node-port-info{display:inline-block;padding:2px 6px;border-radius:4px;background:rgba(138,180,248,0.15);color:#8ab4f8;font-size:12px;margin-top:4px}',
     '.stargate-node-dialog input,.stargate-node-dialog textarea{background:#202020;color:#d8d8d8;border-color:rgba(140,140,140,.45)}',
     '.stargate-node-dialog textarea{min-height:180px}',
     '@media screen and (max-width:1180px){.stargate-node-modal{left:0}.stargate-node-dialog{width:min(720px,calc(100vw - 36px))}}',
@@ -124,20 +141,26 @@ function nodes.cfgvalue()
   }
   local count = 0
   for line in rows:gmatch("[^\r\n]+") do
-    local id, active, type_name, label, server, port, sni, insecure = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+    local id, active, type_name, label, server, port, sni, insecure, enable_port, socks_port, http_port, listen = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
     if id then
       count = count + 1
       local badge = active == "1" and ui_text("Active", "当前") or ""
       local checked = active == "1" and "checked" or ""
       local active_class = active == "1" and " stargate-node-row-active" or ""
+      local port_badges = {}
+      if enable_port == "1" then
+        if socks_port ~= "" then port_badges[#port_badges + 1] = "SOCKS: " .. socks_port end
+        if http_port ~= "" then port_badges[#port_badges + 1] = "HTTP: " .. http_port end
+      end
+      local port_info_html = #port_badges > 0 and ('<div class="stargate-node-port-info">' .. pc(table.concat(port_badges, ", ")) .. '</div>') or ""
       html[#html + 1] = '<div class="stargate-node-row' .. active_class .. '">'
       html[#html + 1] = '<div><input type="radio" name="stargate_active_node_view" disabled ' .. checked .. ' /></div>'
-      html[#html + 1] = '<div><div class="stargate-node-name">' .. pc(label) .. '</div><div class="stargate-node-meta">' .. pc(type_name) .. ' ' .. pc(badge) .. '</div></div>'
+      html[#html + 1] = '<div><div class="stargate-node-name">' .. pc(label) .. '</div><div class="stargate-node-meta">' .. pc(type_name) .. ' ' .. pc(badge) .. '</div>' .. port_info_html .. '</div>'
       html[#html + 1] = '<div><div>' .. pc(server) .. ':' .. pc(port) .. '</div><div class="stargate-node-meta">SNI ' .. pc(sni ~= "" and sni or "-") .. '</div></div>'
       html[#html + 1] = '<div>' .. (insecure == "1" and ui_text("Insecure", "不验证") or ui_text("TLS verify", "验证 TLS")) .. '</div>'
       html[#html + 1] = '<div class="stargate-node-actions-inline">'
       html[#html + 1] = '<button type="button" class="cbi-button cbi-button-apply" data-field="stargate_node_action" data-stargate-action="use" data-node="' .. pc(id) .. '">' .. ui_text("Use this node", "使用此节点") .. '</button>'
-      html[#html + 1] = '<button class="cbi-button" type="button" onclick="stargateEditNode(\'' .. jsq(id) .. '\',\'' .. jsq(label) .. '\',\'' .. jsq(server) .. '\',\'' .. jsq(port) .. '\',\'' .. jsq(sni) .. '\',\'' .. jsq(insecure) .. '\')">' .. ui_text("Edit", "编辑") .. '</button>'
+      html[#html + 1] = '<button class="cbi-button" type="button" onclick="stargateEditNode(\'' .. jsq(id) .. '\',\'' .. jsq(label) .. '\',\'' .. jsq(server) .. '\',\'' .. jsq(port) .. '\',\'' .. jsq(sni) .. '\',\'' .. jsq(insecure) .. '\',\'' .. jsq(enable_port) .. '\',\'' .. jsq(socks_port) .. '\',\'' .. jsq(http_port) .. '\',\'' .. jsq(listen) .. '\')">' .. ui_text("Edit", "编辑") .. '</button>'
       html[#html + 1] = '<button type="button" class="cbi-button cbi-button-remove" data-field="stargate_node_action" data-stargate-action="delete" data-confirm="' .. ui_text("Delete this node?", "删除此节点？") .. '" data-node="' .. pc(id) .. '">' .. ui_text("Delete", "删除") .. '</button>'
       html[#html + 1] = '</div></div>'
     end
@@ -156,6 +179,10 @@ function nodes.cfgvalue()
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. translate("SNI") .. '</label><input name="add_sni" placeholder="example.com" /></div>'
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Password", "密码") .. '</label><input name="add_password" type="password" /></div>'
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Allow insecure TLS", "允许不安全 TLS") .. '</label><input type="checkbox" name="add_insecure" value="1" checked /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated inbound port", "开启独立端口") .. '</label><input type="checkbox" name="add_enable_port" value="1" /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Listen address", "监听地址") .. '</label><input name="add_listen" value="0.0.0.0" /><div class="stargate-node-meta">' .. ui_text("0.0.0.0 listens on every interface; keep WAN input closed in the firewall.", "0.0.0.0 会监听所有接口，请保持防火墙 WAN 入站关闭。") .. '</div></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated SOCKS port", "独立 SOCKS 端口") .. '</label><input name="add_socks_port" placeholder="10818" /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated HTTP port", "独立 HTTP 端口") .. '</label><input name="add_http_port" placeholder="10819" /></div>'
   html[#html + 1] = '</div>'
   html[#html + 1] = '<div class="stargate-node-dialog-actions"><button class="cbi-button" type="button" onclick="stargateCloseNodeModal(this)">' .. ui_text("Cancel", "取消") .. '</button><button class="cbi-button cbi-button-apply" type="submit" onclick="document.getElementById(\'stargate_node_action\').value=\'add\'">' .. ui_text("Add", "添加") .. '</button></div>'
   html[#html + 1] = '</div></div></div>'
@@ -177,6 +204,10 @@ function nodes.cfgvalue()
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. translate("SNI") .. '</label><input id="stargate_edit_sni" name="edit_sni" placeholder="example.com" /></div>'
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Password", "密码") .. '</label><input id="stargate_edit_password" name="edit_password" type="password" placeholder="' .. ui_text("Keep unchanged if empty", "留空则不修改") .. '" /></div>'
   html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Allow insecure TLS", "允许不安全 TLS") .. '</label><input id="stargate_edit_insecure" type="checkbox" name="edit_insecure" value="1" /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated inbound port", "开启独立端口") .. '</label><input id="stargate_edit_enable_port" type="checkbox" name="edit_enable_port" value="1" /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Listen address", "监听地址") .. '</label><input id="stargate_edit_listen" name="edit_listen" value="0.0.0.0" /><div class="stargate-node-meta">' .. ui_text("0.0.0.0 listens on every interface; keep WAN input closed in the firewall.", "0.0.0.0 会监听所有接口，请保持防火墙 WAN 入站关闭。") .. '</div></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated SOCKS port", "独立 SOCKS 端口") .. '</label><input id="stargate_edit_socks_port" name="edit_socks_port" placeholder="10818" /></div>'
+  html[#html + 1] = '<div class="stargate-node-field"><label>' .. ui_text("Dedicated HTTP port", "独立 HTTP 端口") .. '</label><input id="stargate_edit_http_port" name="edit_http_port" placeholder="10819" /></div>'
   html[#html + 1] = '</div>'
   html[#html + 1] = '<div class="stargate-node-dialog-actions"><button class="cbi-button" type="button" onclick="stargateCloseNodeModal(this)">' .. ui_text("Cancel", "取消") .. '</button><button class="cbi-button cbi-button-apply" type="submit" onclick="document.getElementById(\'stargate_node_action\').value=\'edit\'">' .. ui_text("Save", "保存") .. '</button></div>'
   html[#html + 1] = '</div></div></div>'
@@ -185,7 +216,7 @@ function nodes.cfgvalue()
   html[#html + 1] = 'function stargateOpenNodeModal(id){var n=document.getElementById(id);if(!n)return;n.className=n.className.replace(/\\s*stargate-node-modal-open/g,"")+" stargate-node-modal-open";var f=n.querySelector("input,textarea,button");if(f&&f.focus)setTimeout(function(){f.focus();},40);}'
   html[#html + 1] = 'function stargateCloseNodeModal(el){var n=el;while(n&&(!n.className||String(n.className).indexOf("stargate-node-modal")<0)){n=n.parentNode;}if(n)n.className=n.className.replace(/\\s*stargate-node-modal-open/g,"");}'
   html[#html + 1] = 'function stargateSetValue(id,value){var n=document.getElementById(id);if(n)n.value=value||"";}'
-  html[#html + 1] = 'function stargateEditNode(id,label,server,port,sni,insecure){stargateSetValue("stargate_edit_id",id);stargateSetValue("stargate_edit_label",label);stargateSetValue("stargate_edit_server",server);stargateSetValue("stargate_edit_port",port);stargateSetValue("stargate_edit_sni",sni);stargateSetValue("stargate_edit_password","");var c=document.getElementById("stargate_edit_insecure");if(c)c.checked=(String(insecure)==="1");stargateOpenNodeModal("stargate-edit-node");}'
+  html[#html + 1] = 'function stargateEditNode(id,label,server,port,sni,insecure,enable_port,socks_port,http_port,listen){stargateSetValue("stargate_edit_id",id);stargateSetValue("stargate_edit_label",label);stargateSetValue("stargate_edit_server",server);stargateSetValue("stargate_edit_port",port);stargateSetValue("stargate_edit_sni",sni);stargateSetValue("stargate_edit_password","");var c=document.getElementById("stargate_edit_insecure");if(c)c.checked=(String(insecure)==="1");var ep=document.getElementById("stargate_edit_enable_port");if(ep)ep.checked=(String(enable_port)==="1");stargateSetValue("stargate_edit_socks_port",socks_port);stargateSetValue("stargate_edit_http_port",http_port);stargateSetValue("stargate_edit_listen",listen||"0.0.0.0");stargateOpenNodeModal("stargate-edit-node");}'
   html[#html + 1] = 'document.onkeydown=function(e){e=e||window.event;if((e.key==="Escape"||e.keyCode===27)){var ns=document.querySelectorAll(".stargate-node-modal-open");for(var i=0;i<ns.length;i++)stargateCloseNodeModal(ns[i]);}};'
   html[#html + 1] = '//]]>'
   html[#html + 1] = '</script>'

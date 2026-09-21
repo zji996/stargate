@@ -37,6 +37,36 @@ return view.extend({
     insecure.default = '1';
     insecure.rmempty = false;
 
+    // Dedicated ports only. Nodes themselves are added, edited and removed
+    // through the backend actions so validation stays in one place.
+    var n = m.section(form.GridSection, 'node_item', _('Dedicated proxy ports'));
+    n.description = _('Give a node its own LAN SOCKS/HTTP port. Domestic and private destinations still go direct; proxied traffic from that port uses this node. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall.');
+    n.anonymous = false;
+    n.addremove = false;
+
+    var nLabel = n.option(form.DummyValue, 'label', _('Label'));
+    var nServer = n.option(form.DummyValue, 'server', _('Server'));
+    var nPort = n.option(form.DummyValue, 'server_port', _('Port'));
+
+    var nEnablePort = n.option(form.Flag, 'enable_port', _('Dedicated port'));
+    nEnablePort.default = '0';
+    nEnablePort.rmempty = false;
+
+    var nSocksPort = n.option(form.Value, 'socks_port', _('SOCKS port'));
+    nSocksPort.datatype = 'port';
+    nSocksPort.placeholder = '10818';
+    nSocksPort.depends('enable_port', '1');
+
+    var nHttpPort = n.option(form.Value, 'http_port', _('HTTP port'));
+    nHttpPort.datatype = 'port';
+    nHttpPort.placeholder = '10819';
+    nHttpPort.depends('enable_port', '1');
+
+    var nListen = n.option(form.Value, 'listen', _('Listen address'));
+    nListen.datatype = 'ipaddr';
+    nListen.default = '0.0.0.0';
+    nListen.depends('enable_port', '1');
+
     var i = m.section(form.NamedSection, 'inbound', 'inbound', _('Local inbound'));
     i.anonymous = true;
 

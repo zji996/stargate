@@ -617,3 +617,33 @@ msgstr ""
 
 msgid "Problem detected!"
 msgstr ""
+
+msgid "Dedicated port"
+msgstr ""
+
+msgid "Dedicated inbound port"
+msgstr ""
+
+msgid "Dedicated SOCKS port"
+msgstr ""
+
+msgid "Dedicated HTTP port"
+msgstr ""
+
+msgid "Dedicated proxy ports:"
+msgstr ""
+
+msgid "Dedicated proxy ports"
+msgstr ""
+
+msgid "Give a node its own LAN SOCKS/HTTP port. Domestic and private destinations still go direct; proxied traffic from that port uses this node. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall."
+msgstr ""
+
+msgid "Listen address"
+msgstr ""
+
+msgid "same as active node"
+msgstr ""
+
+msgid "0.0.0.0 listens on every interface; keep WAN input closed in the firewall."
+msgstr ""

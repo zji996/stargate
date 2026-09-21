@@ -27,6 +27,16 @@ return view.extend({
             E('span',{class:'sg-version'},(status.singbox||'sing-box').replace(' version ', ' '))
           ]),
           status.node_ready?'':E('a',{class:'sg-empty',href:L.url('admin/services/stargate/node')},_('Add and select a node')),
+          (status.aux_nodes && status.aux_nodes.length > 0) ? E('div', {style:'margin:10px 0;font-size:13px;'}, [
+            E('div', {style:'font-weight:600;margin-bottom:4px;'}, _('Dedicated proxy ports:')),
+            E('ul', {style:'margin:0;padding-left:18px;list-style:disc;'}, status.aux_nodes.map(function(aux) {
+              var ports = [];
+              if (aux.socks_port) ports.push('SOCKS ' + aux.listen + ':' + aux.socks_port);
+              if (aux.http_port) ports.push('HTTP ' + aux.listen + ':' + aux.http_port);
+              var suffix = aux.outbound === 'anytls-out' ? ' - ' + _('same as active node') : '';
+              return E('li', {}, aux.label + ' (' + ports.join(', ') + ')' + suffix);
+            }))
+          ]) : '',
           E('div',{class:'sg-probes','aria-label':_('Proxy connectivity')},['baidu','google','github'].map(function(target) {
             var label=E('span',{class:'sg-probe-result','aria-live':'polite'},_('Check'));
             return E('button',{type:'button',class:'sg-probe',click:async function(ev) {
