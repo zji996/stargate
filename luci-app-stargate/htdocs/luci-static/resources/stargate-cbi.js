@@ -52,7 +52,7 @@
     });
   });
   document.querySelectorAll('.stargate-node-field').forEach(function(field,index) {
-    var label=field.querySelector('label'), input=field.querySelector('input,textarea');
+    var label=field.querySelector('label'), input=field.querySelector('input,select,textarea');
     if (!label || !input) return;
     if (!input.id) input.id='stargate-field-'+index;
     label.htmlFor=input.id;
@@ -65,14 +65,14 @@
     dialog.querySelector('.stargate-node-x').setAttribute('aria-label','关闭');
     dialog.addEventListener('keydown',function(ev) {
       if(ev.key!=='Tab') return;
-      var fields=Array.from(dialog.querySelectorAll('button,input,textarea')).filter(function(el){return !el.disabled && el.offsetParent;});
+      var fields=Array.from(dialog.querySelectorAll('button,input,select,textarea')).filter(function(el){return !el.disabled && el.offsetParent;});
       var first=fields[0],last=fields[fields.length-1];
       if(ev.shiftKey && document.activeElement===first){ev.preventDefault();last.focus();}
       else if(!ev.shiftKey && document.activeElement===last){ev.preventDefault();first.focus();}
     });
   });
   document.querySelectorAll('.stargate-node-modal').forEach(function(modal) {
-    modal.querySelectorAll('input,textarea,button').forEach(function(input) { input.setAttribute('form',form.id); });
+    modal.querySelectorAll('input,select,textarea,button').forEach(function(input) { input.setAttribute('form',form.id); });
     document.body.appendChild(modal);
   });
   var previousFocus;

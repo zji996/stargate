@@ -37,16 +37,32 @@ return view.extend({
     insecure.default = '1';
     insecure.rmempty = false;
 
+    var i = m.section(form.NamedSection, 'inbound', 'inbound', _('Inbound ports'));
+    i.description = _('Global default inbound and dedicated proxy inbounds. Dedicated ports can be bound to specific egress nodes for device-specific routing.');
+    i.anonymous = true;
+
+    var socksListen = i.option(form.Value, 'socks_listen', _('SOCKS listen'));
+    socksListen.default = '127.0.0.1';
+    var socksPort = i.option(form.Value, 'socks_port', _('SOCKS port'));
+    socksPort.datatype = 'port';
+    socksPort.default = '10808';
+
+    var httpListen = i.option(form.Value, 'http_listen', _('HTTP listen'));
+    httpListen.default = '127.0.0.1';
+    var httpPort = i.option(form.Value, 'http_port', _('HTTP port'));
+    httpPort.datatype = 'port';
+    httpPort.default = '10809';
+
     // Dedicated ports only. Nodes themselves are added, edited and removed
     // through the backend actions so validation stays in one place.
-    var n = m.section(form.GridSection, 'node_item', _('Dedicated proxy ports'));
-    n.description = _('Give a node its own LAN SOCKS/HTTP port. Domestic and private destinations still go direct; proxied traffic from that port uses this node. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall.');
+    var n = m.section(form.GridSection, 'node_item', _('Dedicated inbound ports'));
+    n.description = _('Assign dedicated LAN SOCKS/HTTP ports to specific nodes for device-specific routing without exposing unused nodes. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall.');
     n.anonymous = false;
     n.addremove = false;
 
-    var nLabel = n.option(form.DummyValue, 'label', _('Label'));
-    var nServer = n.option(form.DummyValue, 'server', _('Server'));
-    var nPort = n.option(form.DummyValue, 'server_port', _('Port'));
+    var nLabel = n.option(form.DummyValue, 'label', _('Bound node'));
+    var nPortLabel = n.option(form.Value, 'port_label', _('Purpose'));
+    nPortLabel.placeholder = _('e.g. Living room TV / Workstation');
 
     var nEnablePort = n.option(form.Flag, 'enable_port', _('Dedicated port'));
     nEnablePort.default = '0';
@@ -66,21 +82,6 @@ return view.extend({
     nListen.datatype = 'ipaddr';
     nListen.default = '0.0.0.0';
     nListen.depends('enable_port', '1');
-
-    var i = m.section(form.NamedSection, 'inbound', 'inbound', _('Local inbound'));
-    i.anonymous = true;
-
-    var socksListen = i.option(form.Value, 'socks_listen', _('SOCKS listen'));
-    socksListen.default = '127.0.0.1';
-    var socksPort = i.option(form.Value, 'socks_port', _('SOCKS port'));
-    socksPort.datatype = 'port';
-    socksPort.default = '10808';
-
-    var httpListen = i.option(form.Value, 'http_listen', _('HTTP listen'));
-    httpListen.default = '127.0.0.1';
-    var httpPort = i.option(form.Value, 'http_port', _('HTTP port'));
-    httpPort.datatype = 'port';
-    httpPort.default = '10809';
 
     return m.render();
   }

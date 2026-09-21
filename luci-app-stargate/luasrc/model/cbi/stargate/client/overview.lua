@@ -26,13 +26,14 @@ function dashboard.cfgvalue()
   local aux_list = {}
   local node_rows = sys.exec("/usr/share/stargate/stargate.sh node-list 2>/dev/null")
   for line in node_rows:gmatch("[^\r\n]+") do
-    local _, _, _, label, _, _, _, _, enable_port, socks_port, http_port, listen = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)$")
+    local _, _, _, label, _, _, _, _, enable_port, socks_port, http_port, listen, port_label = line:match("^([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t([^\t]*)\t?([^\t]*)$")
     if enable_port == "1" then
       local ports = {}
       if socks_port and socks_port ~= "" then ports[#ports + 1] = "SOCKS " .. (listen or "0.0.0.0") .. ":" .. socks_port end
       if http_port and http_port ~= "" then ports[#ports + 1] = "HTTP " .. (listen or "0.0.0.0") .. ":" .. http_port end
       if #ports > 0 then
-        aux_list[#aux_list + 1] = '<li>' .. pc(label or "") .. ' (' .. pc(table.concat(ports, ", ")) .. ')</li>'
+        local displayName = (port_label and port_label ~= "") and (port_label .. " (" .. (label or "") .. ")") or (label or "")
+        aux_list[#aux_list + 1] = '<li>' .. pc(displayName) .. ' (' .. pc(table.concat(ports, ", ")) .. ')</li>'
       end
     end
   end

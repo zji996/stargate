@@ -647,3 +647,27 @@ msgstr ""
 
 msgid "0.0.0.0 listens on every interface; keep WAN input closed in the firewall."
 msgstr ""
+
+msgid "Inbound ports"
+msgstr ""
+
+msgid "Global default inbound and dedicated proxy inbounds. Dedicated ports can be bound to specific egress nodes for device-specific routing."
+msgstr ""
+
+msgid "Dedicated inbound ports"
+msgstr ""
+
+msgid "Assign dedicated LAN SOCKS/HTTP ports to specific nodes for device-specific routing without exposing unused nodes. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall."
+msgstr ""
+
+msgid "Bound node"
+msgstr ""
+
+msgid "Purpose"
+msgstr ""
+
+msgid "e.g. Living room TV / Workstation"
+msgstr ""
+
+msgid "Configured"
+msgstr ""

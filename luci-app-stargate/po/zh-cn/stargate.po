@@ -687,3 +687,27 @@ msgstr "检测中…"
 
 msgid "Failed"
 msgstr "未连通"
+
+msgid "Inbound ports"
+msgstr "分流与入站端口"
+
+msgid "Global default inbound and dedicated proxy inbounds. Dedicated ports can be bound to specific egress nodes for device-specific routing."
+msgstr "全局主入站与独立分流代理端口。独立分流端口可绑定至特定出口节点，实现局域网设备按端口分流。"
+
+msgid "Dedicated inbound ports"
+msgstr "独立分流端口列表"
+
+msgid "Assign dedicated LAN SOCKS/HTTP ports to specific nodes for device-specific routing without exposing unused nodes. Listening on 0.0.0.0 exposes the port on every interface, so keep WAN input closed in the firewall."
+msgstr "为指定节点分配专属的 SOCKS/HTTP 端口，供局域网指定设备直接连接，无需将所有节点端口全部暴露。监听 0.0.0.0 会在所有接口暴露端口，请保持防火墙 WAN 入站关闭。"
+
+msgid "Bound node"
+msgstr "绑定出口节点"
+
+msgid "Purpose"
+msgstr "端口用途"
+
+msgid "e.g. Living room TV / Workstation"
+msgstr "例如：客厅电视 / 工作机"
+
+msgid "Configured"
+msgstr "已配置端口"

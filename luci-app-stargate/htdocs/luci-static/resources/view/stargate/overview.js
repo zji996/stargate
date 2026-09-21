@@ -34,7 +34,8 @@ return view.extend({
               if (aux.socks_port) ports.push('SOCKS ' + aux.listen + ':' + aux.socks_port);
               if (aux.http_port) ports.push('HTTP ' + aux.listen + ':' + aux.http_port);
               var suffix = aux.outbound === 'anytls-out' ? ' - ' + _('same as active node') : '';
-              return E('li', {}, aux.label + ' (' + ports.join(', ') + ')' + suffix);
+              var displayName = aux.port_label ? (aux.port_label + ' (' + aux.label + ')') : aux.label;
+              return E('li', {}, displayName + ' (' + ports.join(', ') + ')' + suffix);
             }))
           ]) : '',
           E('div',{class:'sg-probes','aria-label':_('Proxy connectivity')},['baidu','google','github'].map(function(target) {
