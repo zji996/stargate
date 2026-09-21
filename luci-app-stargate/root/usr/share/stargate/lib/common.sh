@@ -25,6 +25,10 @@ validate_port_value() {
       echo "$label must be numeric" >&2
       return 1
       ;;
+    0[0-9]*)
+      echo "$label must not contain leading zeros" >&2
+      return 1
+      ;;
   esac
   [ "$value" -gt 0 ] && [ "$value" -le 65535 ] || {
     echo "$label must be between 1 and 65535" >&2

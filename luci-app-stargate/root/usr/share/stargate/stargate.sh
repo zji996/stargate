@@ -32,6 +32,9 @@ Usage:
   /usr/share/stargate/stargate.sh node-list
   /usr/share/stargate/stargate.sh node-use id
   /usr/share/stargate/stargate.sh node-delete id
+  /usr/share/stargate/stargate.sh node-port-set id socks_port http_port listen label [old_id]
+  /usr/share/stargate/stargate.sh node-port-remove id
+  /usr/share/stargate/stargate.sh node-next-ports
   /usr/share/stargate/stargate.sh rules-update
   /usr/share/stargate/stargate.sh rules-update-start
   /usr/share/stargate/stargate.sh rules-status
@@ -75,10 +78,13 @@ case "$action" in
   probe) probe_url "${2:-}" ;;
   node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" "${8:-0}" "${9:-}" "${10:-}" "${11:-0.0.0.0}" ;;
   node-add-link) node_add_link "${2:-}" ;;
-  node-update) node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" "${9:-0}" "${10:-}" "${11:-}" "${12:-0.0.0.0}" ;;
+  node-update) if [ "$#" -ge 9 ]; then node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" "${9:-0}" "${10:-}" "${11:-}" "${12:-0.0.0.0}"; else node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}"; fi ;;
   node-list) node_list ;;
   node-use) node_use "${2:-}" ;;
   node-delete) node_delete "${2:-}" ;;
+  node-port-set) node_port_set "${2:-}" "${3:-}" "${4:-}" "${5:-0.0.0.0}" "${6:-}" "${7:-}" ;;
+  node-port-remove) node_port_remove "${2:-}" ;;
+  node-next-ports) node_next_ports ;;
   rules-update) rules_update ;;
   rules-update-start) rules_update_start ;;
   rules-status) rules_status ;;

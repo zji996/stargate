@@ -186,13 +186,15 @@ status_json() {
     else
       printf ','
     fi
-    printf '{"id":"%s","label":"%s","socks_port":"%s","http_port":"%s","listen":"%s","outbound":"%s"}' \
+    aux_port_label="$(uci_get "$aux_id" port_label '')"
+    printf '{"id":"%s","label":"%s","socks_port":"%s","http_port":"%s","listen":"%s","outbound":"%s","port_label":"%s"}' \
       "$aux_id" \
       "$(printf '%s' "$aux_label" | json_escape)" \
       "$(printf '%s' "$aux_socks" | json_escape)" \
       "$(printf '%s' "$aux_http" | json_escape)" \
       "$(printf '%s' "$aux_listen" | json_escape)" \
-      "$aux_outbound"
+      "$aux_outbound" \
+      "$(printf '%s' "$aux_port_label" | json_escape)"
   done
   printf '],'
   printf '"service":%s,' "$(printf '%s' "$service_state" | json_escape | sed 's/^/"/;s/$/"/')"
