@@ -261,6 +261,15 @@ node_use() {
     echo "node not found or unsupported: $id" >&2
     exit 1
   }
+
+  old_active_type="$(uci_get node type anytls)"
+  old_active_label="$(uci_get node label '')"
+  old_active_server="$(uci_get node server '')"
+  old_active_port="$(uci_get node server_port 443)"
+  old_active_password="$(uci_get node password '')"
+  old_active_sni="$(uci_get node sni '')"
+  old_active_insecure="$(uci_get node insecure 1)"
+
   node_label="$(uci_get "$id" label "$id")"
   node_server="$(uci_get "$id" server '')"
   node_port="$(uci_get "$id" server_port 443)"
@@ -268,6 +277,7 @@ node_use() {
   node_sni="$(uci_get "$id" sni '')"
   node_insecure="$(uci_get "$id" insecure 1)"
   node_type="anytls"
+  node_enable_port=0
   validate_node_fields
   uci_cmd set "$app.node.type=anytls"
   uci_cmd set "$app.node.label=$node_label"
@@ -277,7 +287,38 @@ node_use() {
   uci_cmd set "$app.node.sni=$node_sni"
   uci_cmd set "$app.node.insecure=$node_insecure"
   uci_commit
-  echo "active node: $node_label"
+
+  if [ "$(bool_value "$(uci_get global enabled 0)")" != "1" ]; then
+    echo "active node saved (runtime disabled): $node_label"
+    return 0
+  fi
+
+  if runtime_output="$( (apply_runtime_state) 2>&1)"; then
+    [ -z "$runtime_output" ] || printf '%s\n' "$runtime_output"
+    echo "active node applied: $node_label"
+    return 0
+  else
+    runtime_rc=$?
+  fi
+
+  uci_cmd set "$app.node.type=$old_active_type"
+  uci_cmd set "$app.node.label=$old_active_label"
+  uci_cmd set "$app.node.server=$old_active_server"
+  uci_cmd set "$app.node.server_port=$old_active_port"
+  uci_cmd set "$app.node.password=$old_active_password"
+  uci_cmd set "$app.node.sni=$old_active_sni"
+  uci_cmd set "$app.node.insecure=$old_active_insecure"
+  uci_commit
+
+  printf '%s\n' "$runtime_output" >&2
+  echo "node switch failed; restored previous active node" >&2
+  if recovery_output="$( (apply_runtime_state) 2>&1)"; then
+    [ -z "$recovery_output" ] || printf '%s\n' "$recovery_output" >&2
+  else
+    [ -z "$recovery_output" ] || printf '%s\n' "$recovery_output" >&2
+    echo "failed to restore previous runtime state" >&2
+  fi
+  return "$runtime_rc"
 }
 
 node_delete() {

@@ -50,7 +50,15 @@ list_node_item_ids() {
   grep '\.type=anytls' "$state_file" 2>/dev/null | cut -d. -f1 | sort -u
 }
 
+runtime_calls="$test_dir/runtime.calls"
+runtime_result=success
+apply_runtime_state() {
+  printf '%s\n' "$(uci_get node server '')" >> "$runtime_calls"
+  [ "$runtime_result" = success ]
+}
+
 # Initial setup: main inbounds and two nodes
+uci_cmd set "$app.global.enabled=1"
 uci_cmd set "$app.inbound.socks_port=10808"
 uci_cmd set "$app.inbound.http_port=10809"
 uci_cmd set "$app.inbound.transparent_port=12345"
@@ -71,6 +79,42 @@ uci_cmd set "$app.node_b.server=b.example.com"
 uci_cmd set "$app.node_b.server_port=443"
 uci_cmd set "$app.node_b.password=pass-b"
 uci_cmd set "$app.node_b.enable_port=0"
+
+uci_cmd set "$app.node=node"
+uci_cmd set "$app.node.type=anytls"
+uci_cmd set "$app.node.label=Node-A"
+uci_cmd set "$app.node.server=a.example.com"
+uci_cmd set "$app.node.server_port=443"
+uci_cmd set "$app.node.password=pass-a"
+uci_cmd set "$app.node.sni="
+uci_cmd set "$app.node.insecure=1"
+
+# Switching an enabled runtime applies the selected node immediately.
+node_use "node_b"
+[ "$(uci_get node server '')" = "b.example.com" ] || {
+  echo "node_use did not save the selected node" >&2
+  exit 1
+}
+[ "$(tail -n 1 "$runtime_calls")" = "b.example.com" ] || {
+  echo "node_use did not apply the selected node at runtime" >&2
+  exit 1
+}
+
+# A failed runtime apply restores both the previous UCI selection and runtime.
+runtime_result=fail
+if (node_use "node_a" >/dev/null 2>&1); then
+  echo "expected failed runtime apply to reject node switch" >&2
+  exit 1
+fi
+[ "$(uci_get node server '')" = "b.example.com" ] || {
+  echo "failed node switch did not restore the previous UCI node" >&2
+  exit 1
+}
+[ "$(tail -n 1 "$runtime_calls")" = "b.example.com" ] || {
+  echo "failed node switch did not attempt to restore the previous runtime" >&2
+  exit 1
+}
+runtime_result=success
 
 # 1. Test node_next_ports with no ports allocated
 ports="$(node_next_ports)"
