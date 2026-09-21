@@ -6,7 +6,9 @@
 2. `reference/architecture.md`：当前真实架构和运行策略。
 3. `reference/luci-platform.md`：LuCI 管理前端和第一版平台设计。
 4. `reference/deployment-notes.md`：OpenWrt 实机部署、验证和排障经验。
-5. `roadmap.md`：未来阶段规划。
-6. `reference/naming.md`：命名来源和边界。
+5. `reference/s20m-nftables-build.md`：S20M/S20L nftables 固件编译适配和刷后验证。
+6. `roadmap.md`：未来阶段规划。
+7. `reference/naming.md`：命名来源和边界。
+8. [NetBird 出口设计](reference/netbird-exit-node.md)：已部署的数据面基础、尚未执行的控制台配置和验收。
 
 `reference/` 只记录当前真实系统。未实现的内容应放在 `roadmap.md`，或在文中明确标注 `Status: Not Implemented`。

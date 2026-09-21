@@ -44,12 +44,13 @@ start_local_proxy() {
   ensure_inbound_section
   uci_cmd set "$app.inbound.transparent_proxy=0"
   uci_commit
-  set_init_enabled "$auto_start"
   if apply_config && restart_service_with_rollback; then
+    set_init_enabled 1
     firewall_clean >/dev/null 2>&1 || true
     echo "started local proxy mode"
   else
     rc=$?
+    set_init_enabled 0
     restore_transparent_uci
     exit "$rc"
   fi
@@ -75,11 +76,12 @@ start_transparent_proxy() {
   uci_cmd set "$app.inbound.transparent_listen=$(uci_get inbound transparent_listen 0.0.0.0)"
   uci_cmd set "$app.inbound.transparent_port=$port"
   uci_commit
-  set_init_enabled "$auto_start"
   if apply_config && restart_service_with_rollback && firewall_apply_rules; then
+    set_init_enabled 1
     echo "started transparent proxy mode: $mode"
   else
     rc=$?
+    set_init_enabled 0
     firewall_clean >/dev/null 2>&1 || true
     restore_transparent_uci
     exit "$rc"
@@ -110,7 +112,6 @@ apply_runtime_state() {
     return 0
   fi
 
-  set_init_enabled "$auto_start"
   if [ "$transparent_proxy" = "1" ]; then
     start_transparent_proxy "$transparent_mode" "$transparent_port"
   else
@@ -160,6 +161,8 @@ status_json() {
     printf '"backup_ready":false,'
   fi
   printf '"transparent_proxy":%s,' "$(bool_json "$transparent_proxy")"
+  printf '"netbird_proxy":%s,' "$(bool_json "$netbird_proxy")"
+  printf '"netbird_interface":"%s",' "$(printf '%s' "$netbird_interface" | json_escape)"
   printf '"transparent_mode":"%s",' "$transparent_mode"
   printf '"transparent_listen":"%s",' "$(printf '%s' "$transparent_listen" | json_escape)"
   printf '"transparent_port":"%s",' "$(printf '%s' "$transparent_port" | json_escape)"
@@ -218,7 +221,7 @@ probe_url() {
     ''|0.0.0.0|::) proxy_host="127.0.0.1" ;;
   esac
   if [ "$transparent_proxy" = "1" ] && [ "$firewall_active" = "1" ]; then
-    mode="Stargate transparent path"
+    mode="Stargate local proxy path (transparent forwarding active)"
   elif [ "$transparent_proxy" = "1" ]; then
     mode="Stargate local proxy path (forwarding inactive)"
   fi

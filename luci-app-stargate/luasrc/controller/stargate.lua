@@ -128,8 +128,7 @@ function connect_status()
     proxy_arg = "--proxy " .. shellquote("http://" .. http_listen .. ":" .. http_port)
 
     if transparent and firewall_active then
-      proxy_mode = "transparent"
-      proxy_label = "Stargate transparent path"
+      proxy_label = "Stargate local proxy path (transparent forwarding active)"
     elseif transparent then
       proxy_label = "Stargate local proxy path (forwarding inactive)"
     end
@@ -254,9 +253,11 @@ function backup_restore()
 
   local output = ""
   local ok = false
-  if http.formvalue("restore") then
-    output = sys.exec("/usr/share/stargate/stargate.sh backup-restore " .. shellquote(upload) .. " 2>&1")
-    ok = not output:match("[Ee]rror") and not output:match("[Ff]ailed") and not output:match("invalid") and not output:match("missing")
+  if common.action("restore") then
+    output = sys.exec("/usr/share/stargate/stargate.sh backup-restore " .. shellquote(upload) .. " 2>&1; printf '\\n__rc=%s' $?")
+    local rc = tonumber(output:match("__rc=(%d+)%s*$")) or 1
+    output = output:gsub("\n?__rc=%d+%s*$", "")
+    ok = (rc == 0)
   else
     output = "missing restore request"
   end
@@ -292,9 +293,11 @@ function singbox_upgrade()
 
   local output = ""
   local ok = false
-  if http.formvalue("upgrade") then
-    output = sys.exec("/usr/share/stargate/stargate.sh singbox-upgrade " .. shellquote(upload) .. " 2>&1")
-    ok = not output:match("[Ee]rror") and not output:match("[Ff]ailed") and not output:match("missing") and not output:match("not a runnable")
+  if common.action("upgrade") then
+    output = sys.exec("/usr/share/stargate/stargate.sh singbox-upgrade " .. shellquote(upload) .. " 2>&1; printf '\\n__rc=%s' $?")
+    local rc = tonumber(output:match("__rc=(%d+)%s*$")) or 1
+    output = output:gsub("\n?__rc=%d+%s*$", "")
+    ok = (rc == 0)
   else
     output = "missing upgrade request"
   end

@@ -73,14 +73,26 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 LuCI 版后端还提供两个显式启动动作：
 
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
-- `start-transparent [redirect|tproxy] [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 或 `tproxy` 入站并重启 Stargate，默认模式是 `redirect`，默认端口是 `12345`。应用透明转发前会拒绝与 PassWall2、PassWall、OpenClash 等已启用或运行的透明代理共存，除非操作者显式放行。
-- `apply-runtime`：按当前 UCI 期望同步运行态的显式命令入口。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。LuCI 保存和 init reload 不再自动调用该入口。
+- `start-transparent redirect [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 入站并重启 Stargate，默认端口是 `12345`。当前防火墙后端不支持 TProxy，运行态入口会提前拒绝该模式。应用透明转发前会拒绝与 PassWall2、PassWall、OpenClash 等已启用或运行的透明代理共存，除非操作者显式放行。
+- `apply-runtime`：按当前 UCI 期望同步运行态。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。
 
-这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP，也不会在 LuCI 保存配置时自动抢占运行态。
+这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
 
-LuCI Overview 的保存动作只写入 UCI，不启动服务、不停止服务、不应用透明转发。init 脚本 `reload` 也只给出提示，不按 UCI 自动启动代理。init `start` 会读取 `global.enabled`，但只启动 sing-box 本体；防火墙转发必须通过 `start-transparent` 或 `firewall-apply` 显式应用。`global.auto_start=0` 是默认值，显式 `start` 不会强行打开开机自启。
+LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
 
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
+
+### NetBird 接管边界
+
+透明代理启用时，`inbound.netbird_proxy` 默认 `1`，将 `inbound.netbird_interface`（默认 `wt0`）与 LAN 一起作为受管入口。关闭该选项只撤销 NetBird 接管，保留 LAN 透明代理。接口名独立于 LAN 配置，避免为了接管 VPN 而修改 `network.lan.device`。
+
+NetBird 入站访问其他私有 IPv4/IPv6 目标时先绕过，包括其他内网 DNS；访问本路由器的 DNS、公网 DNS 和 IPv4 TCP 时进入现有 DNS/代理分流。受管接口的公网 IPv6 被 guard 阻断，UDP/443 按 QUIC 开关处理，其他 UDP 不代理。NetBird ACL 和系统防火墙仍然负责入站授权；Stargate 不修改它们，部署时必须单独核对重定向后 INPUT 路径是否获准。
+
+这只提供数据面接管，不发布 NetBird exit node、不替客户端选择出口，也不改变 NetBird Auto Apply。当前出口设计与未完成验收见 [NetBird 出口设计](netbird-exit-node.md)。nft 后端将校验通过的删除旧表和新建表合并为一个事务，校验失败时保留原表；iptables 后端目前仍按既有链更新流程执行。
+
+### LuCI 交互边界
+
+CBI 页面通过 `luci.model.stargate.common` 引入共用模板和 `stargate-cbi.js`，集中处理 POST 动作、文件上传反馈、移动端弹窗和键盘焦点。修改配置后由 LuCI 正常提交并触发 procd reload，页面不在提交前抢先应用旧配置。上传控件使用独立 FormData 请求，避免在 LuCI 主表单内嵌套 form。
 
 ## 命名边界
 
@@ -90,37 +102,42 @@ Advanced 页的“转发配置”负责防火墙规则应用和清理。后端�
 
 ## DNS 策略
 
-默认 DNS 配置：
+- `lan-dns`：通过 TCP 显式访问 `127.0.0.1` 上的 dnsmasq，读取其配置端口（默认 53）。本地域名、单标签主机名、私网反向解析交给它，避免系统 resolver 被 NetBird 接管后绕回不确定的上游。
+- `direct-dns`：默认阿里 TCP DNS；用于直连域名及远端 DoH 自举。
+- `remote-doh`：默认 `https://dns.google/dns-query`，通过 AnyTLS 出站，显式用 `direct-dns` 自举。
+- 解析优先级：本地域名 → 用户直连域名 → 用户代理域名 → 基础 proxy → 基础 direct → 模式兜底。基础 direct/proxy 冲突时 proxy 优先。
+- DNS 兜底跟随模式：黑名单/仅直连为 `direct-dns`，白名单/全局代理为 `remote-doh`。旧 UCI `dns.final` 保留兼容读取，但不再决定运行配置；LuCI 显示自动策略。
 
-- `local`：系统本地解析器。
-- `direct-dns`：默认使用阿里 DNS 的 TCP 预设 `tcp://223.5.5.5`。
-- `remote-doh`：默认使用 Google 域名 DoH 预设 `https://dns.google/dns-query`，通过代理出站；它会显式用 `direct-dns` 解析 DoH 服务器域名，避免 DoH 自举连接绕过节点。
-- `final`：默认 `direct-dns`。命中代理规则的域名仍会走 `remote-doh`，未命中的域名使用直连 DNS 兜底。
+只启用本机 SOCKS/HTTP 时不接管客户端 DNS。透明代理且 DNS 重定向开启时，接管受管设备的 IPv4/IPv6 TCP/UDP 53。IPv4 用 REDIRECT；IPv6 使用绑定具体 LAN 地址的 `dns6-in`，并 DNAT 到同一地址，优先稳定 ULA。不能使用通配 IPv6 UDP 监听加 REDIRECT：多地址 LAN 上可能产生不同回复源地址，无法完成反向 NAT。LAN 接口变化由 procd trigger 重新加载配置；有 IPv6 却尚无可绑定 LAN 地址时预检失败，等待接口就绪。
 
-第一阶段的入站 SOCKS/HTTP 使用 sing-box 的 DNS 解析能力，不接管局域网 DNS。
-
-DNS 重定向默认开启，但只在透明代理防火墙规则应用时实际接管受管设备的 TCP/UDP 53。后端会把 53 端口重定向到 sing-box 的本地 `dns-in` 入站，再通过 `hijack-dns` 动作进入 sing-box DNS 模块。
-
-LuCI DNS 页面使用“预设下拉 + 自定义兜底”的形式。常用直连 DNS 和远端 DoH 预设会同时确定协议、服务器和 DoH path，避免只改服务器但忘记协议或路径导致 DNS 静默失效；选择 `Custom` 时才显示底层传输、服务器和 path。
+Stargate 不修改 dnsmasq 上游、DHCP 或 RA。本地域名固定交回 dnsmasq；部署前仍需保证其监听本机 TCP DNS，且没有自定义上游指回 Stargate 形成环路。`.lan`、配置的 dnsmasq domain、`home.arpa`、单标签主机名及常见私网反向区域走本地解析。
 
 ## 规则策略
 
-第一版规则来源使用 `Loyalsoldier/clash-rules` 的 release 文本列表，并配合 MetaCubeX 的 sing-box GeoIP `.srs`：
+规则来自 Loyalsoldier clash-rules 和 MetaCubeX GeoIP `.srs`：direct/private/cncidr/lancidr 合成 `direct.json/.srs`；proxy/gfw/tld-not-cn/telegramcidr 合成 `proxy.json/.srs`；另加载 CN、Google、Facebook、Twitter、Telegram GeoIP 数据。更新为显式操作，先在临时目录下载和编译完整文件，再安装并同步运行态；不从 `third_party/` 加载，不提供离线伪造数据。
 
-- `direct.txt`、`private.txt`、`cncidr.txt`、`lancidr.txt` 合成为 `/usr/share/stargate/rules/direct.json`，再编译为运行时使用的 `direct.srs`。
-- `proxy.txt`、`gfw.txt`、`tld-not-cn.txt`、`telegramcidr.txt` 合成为 `/usr/share/stargate/rules/proxy.json`，再编译为运行时使用的 `proxy.srs`。
-- `geoip-cn.srs` 作为直连 GeoIP rule-set；`geoip-google.srs`、`geoip-facebook.srs`、`geoip-twitter.srs`、`geoip-telegram.srs` 作为代理 GeoIP rule-set。它们来自 `https://cdn.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip`，直接以 sing-box binary rule-set 形式保存。
-- 用户可在 Rules 页分别填写“用户直连域名”和“用户代理域名”，生成优先级高于上游列表的 route rule。
+黑名单/白名单的路由顺序：
 
-规则更新是显式动作，不在启动或生成配置时自动联网。Stargate 不内置离线 fallback 规则文件，也不随包携带 clash-rules、GeoIP 或去广告列表；当黑名单或白名单模式下本地规则文件缺失时，配置生成会失败并提示先更新规则。
+1. DNS 劫持、sniff、QUIC 拒绝及私网直连；本地域名先用 `lan-dns` 解析再直连。
+2. 用户直连域名、用户直连 IP、用户代理域名、用户代理 IP。
+3. 内置代理 CIDR 补充、基础 proxy、GeoIP proxy、基础 direct、GeoIP direct。
+4. 尚未命中时按模式 DNS 兜底解析一次，再检查私网、用户 IP 与基础/GeoIP IP 规则。内置 CIDR 补充也参与解析后的复判。
+5. 黑名单未命中直连，白名单未命中走 AnyTLS。全局代理/仅直连跳过用户覆盖与基础规则，仅保留本地/私网及协议处理规则。
 
-Rules 页提供策略测试入口。测试逻辑按生成配置时的路由优先级解释结果：私有 IP 直连、用户直连/代理域名、基础 direct/proxy rule-set、GeoIP direct/proxy rule-set，最后落到黑名单或白名单模式的默认出站。测试只读取当前 UCI 和本地规则文件，不触发规则更新。
+IP 规则只能检查当时已知的目标 IP；DNS 使用域名策略，不能提前评估尚未解析出的 IP。Rules 测试明确区分域名策略和实际连接：域名输入不验证目标 IP、sniff 和连通性；没有域名命中时返回“需要解析”，不假装已经完成 GeoIP 复判。
 
-黑名单模式下，透明代理的最终出站仍然是 `direct`：只有命中用户代理规则、基础 proxy rule-set 或 GeoIP proxy rule-set 的流量才走 `anytls-out`。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被 direct 列表提前截走。Stargate 不再按 `TCP/443` 做通用代理兜底，避免把未命中的普通 HTTPS 直连网站误送进代理。透明代理的域名识别主要依赖受管设备 DNS 重定向、sing-box DNS `reverse_mapping` 和 TLS/HTTP sniff；域名规则未命中时会执行一次 `resolve`，再用 GeoIP direct/proxy rule-set 对解析出的目标地址复判。直接按 IP 连接的 Google、Meta、Twitter/X、Telegram 等常见目标由 GeoIP proxy `.srs` 补齐，并内置补充 Twitter/X 上游漏掉的 `104.244.43.0/24` 和已观测 AWS 新加坡裸 IP 段 `175.41.128.0/18`；QUIC 由防火墙层阻断 `UDP/443` 后回退到 TCP/TLS，提高可识别性。
+防火墙 `direct4` / `STARGATE_DIRECT4` 只保留私网和保留地址。公网基础直连 CIDR、用户直连 CIDR 均由 sing-box 判定，以免提前绕过用户域名和代理规则。代价是国内 TCP 也会进入核心后直连，需要观察负载；内网访问仍走普通路由。
 
-用户直连/代理 IP 或 CIDR 用于补齐直接按 IP 连接的少量例外：基础 `cncidr/lancidr` 与 GeoIP rule-set 已覆盖常见直连和代理 IP 段，用户 IP/CIDR 默认可以留空。直连 IP/CIDR 会在 sing-box 路由中走 `direct`；透明代理转发已应用且 iptables/ipset 可用时，基础 direct rule-set 中的 IPv4 CIDR、常见内网段和用户直连 IP/CIDR 会进入 `STARGATE_DIRECT4` 绕过集合，让 IP 层已经能确定直连的目标真正绕过 sing-box。代理 IP/CIDR 会写入 sing-box 路由并走节点。阻断 QUIC 默认开启，属于防火墙转发层行为，只拒绝受管 LAN 设备的 `UDP/443`，用于让 HTTP/3/QUIC 回退到 TCP/TLS，不改变其他 UDP 端口的处理。
+## 透明代理防火墙
 
-透明代理防火墙入口按 PassWall2 的经验前插到 PREROUTING/FORWARD 链，避免被固件已有的 `physdev`、zone 或自定义 ACCEPT 规则提前放行。DNS 重定向入口必须在通用 TCP redirect 入口之前。redirect 模式当前只代理 IPv4 TCP；公网 IPv6 在透明代理启用时由 Stargate IPv6 guard 阻断，本地 IPv6、ULA、link-local 和 multicast 仍保留。
+nftables 表 `inet stargate` 先完整预检，再在一个事务内替换：
+
+- NAT PREROUTING `-110`：先处理 NetBird 其他私网目标绕过，再做 IPv4/IPv6 DNS、私网/保留地址绕过，最后接管公网 IPv4 TCP。
+- filter PREROUTING `-10`：DNS 已经 DNAT，保留回复流量、本机 INPUT、NetBird 私网与本地 IPv6；拒绝受管公网 IPv6，按开关拒绝 UDP/443。
+
+guard 不放在 FORWARD，避免 NetBird 自动插入的放行规则抢先结束检查。也不能将 filter guard 插在多个 NAT 优先级之间：S20M 实测这时可能先看到未 DNAT 的公网 IPv6 DNS 并误拒绝，所以 guard 放在所有常规 DNAT hook 之后的 -10。S20M 的内核/nft 已验证 PREROUTING reject；其他固件必须通过本机 nft 预检后应用，不支持时保留旧表。Stargate 不增加其他服务的 INPUT/FORWARD 授权。
+
+当前只透明代理 IPv4 TCP，普通 IPv4 UDP 保持系统路径，公网 IPv6 被拒绝。iptables fallback 提供 IPv4 redirect、IPv6 DNS DNAT 和既有 FORWARD guard；其 NetBird guard 兼容性尚未实机验收。
 
 ## 路由器经验
 

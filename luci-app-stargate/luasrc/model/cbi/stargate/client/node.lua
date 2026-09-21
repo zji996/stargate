@@ -5,6 +5,7 @@ local dispatcher = require "luci.dispatcher"
 local common = require "luci.model.stargate.common"
 
 m = Map("stargate", translate("Node"))
+common.prepare_map(m)
 m.description = translate("Manage a small AnyTLS node list. Use a node to copy it into the active sing-box config.")
 
 local pc = common.pc
@@ -28,7 +29,7 @@ local function uci_get(section, option, default)
   return value
 end
 
-local action = http.formvalue("stargate_node_action")
+local action = common.action("stargate_node_action")
 local message = nil
 if action == "use" or action == "delete" then
   local id = http.formvalue("node_id") or ""
@@ -135,9 +136,9 @@ function nodes.cfgvalue()
       html[#html + 1] = '<div><div>' .. pc(server) .. ':' .. pc(port) .. '</div><div class="stargate-node-meta">SNI ' .. pc(sni ~= "" and sni or "-") .. '</div></div>'
       html[#html + 1] = '<div>' .. (insecure == "1" and ui_text("Insecure", "不验证") or ui_text("TLS verify", "验证 TLS")) .. '</div>'
       html[#html + 1] = '<div class="stargate-node-actions-inline">'
-      html[#html + 1] = '<a class="cbi-button cbi-button-apply" href="' .. base_url .. '?stargate_node_action=use&node_id=' .. pc(id) .. '">' .. ui_text("Use this node", "使用此节点") .. '</a>'
+      html[#html + 1] = '<button type="button" class="cbi-button cbi-button-apply" data-field="stargate_node_action" data-stargate-action="use" data-node="' .. pc(id) .. '">' .. ui_text("Use this node", "使用此节点") .. '</button>'
       html[#html + 1] = '<button class="cbi-button" type="button" onclick="stargateEditNode(\'' .. jsq(id) .. '\',\'' .. jsq(label) .. '\',\'' .. jsq(server) .. '\',\'' .. jsq(port) .. '\',\'' .. jsq(sni) .. '\',\'' .. jsq(insecure) .. '\')">' .. ui_text("Edit", "编辑") .. '</button>'
-      html[#html + 1] = '<a class="cbi-button cbi-button-remove" href="' .. base_url .. '?stargate_node_action=delete&node_id=' .. pc(id) .. '">' .. ui_text("Delete", "删除") .. '</a>'
+      html[#html + 1] = '<button type="button" class="cbi-button cbi-button-remove" data-field="stargate_node_action" data-stargate-action="delete" data-confirm="' .. ui_text("Delete this node?", "删除此节点？") .. '" data-node="' .. pc(id) .. '">' .. ui_text("Delete", "删除") .. '</button>'
       html[#html + 1] = '</div></div>'
     end
   end

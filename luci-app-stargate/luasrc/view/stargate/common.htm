@@ -1,0 +1,16 @@
+<script src="<%=resource%>/stargate-cbi.js" defer></script>
+<style>
+.cbi-page-actions{position:sticky;bottom:0;z-index:10;background:var(--sg-surface,transparent);padding:12px!important;display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+.stargate-card{height:auto!important;min-height:100px!important}
+.stargate-card-note,.stargate-node-row>div,.stargate-forwarding-status{min-width:0;overflow-wrap:anywhere}
+.stargate-node-modal{left:0!important;z-index:2147483000!important;background:rgba(0,0,0,.35)!important}
+.stargate-node-dialog{width:min(720px,calc(100vw - 32px))!important;background:var(--background-color,#fff)!important;color:inherit!important;overscroll-behavior:contain}
+.stargate-node-dialog-head,.stargate-node-dialog input,.stargate-node-dialog textarea{background:inherit!important;color:inherit!important}
+.stargate-node-field input[type=checkbox]{width:auto}
+.stargate-inline-form,.stargate-maint-control{min-width:0;flex-wrap:wrap}
+.stargate-inline-form input[type=file],.stargate-maint-control input[type=file]{width:100%;max-width:100%!important;min-width:0;box-sizing:border-box}
+.stargate-feedback{white-space:pre-wrap;overflow-wrap:anywhere;padding:12px}
+.stargate-feedback:empty{display:none}
+@media(max-width:720px){.stargate-node-row{grid-template-columns:24px minmax(0,1fr)!important}.stargate-node-row>div:nth-child(n+3){grid-column:2}.stargate-node-grid{grid-template-columns:minmax(0,1fr)!important}}
+</style>
+<div id="stargate-feedback" class="stargate-feedback" role="status" aria-live="polite"></div>

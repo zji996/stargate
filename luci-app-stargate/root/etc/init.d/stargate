@@ -26,6 +26,8 @@ stop_service() {
 
 service_triggers() {
   procd_add_reload_trigger stargate
+  # Refresh the bound IPv6 DNS address when LAN comes up or is renumbered.
+  procd_add_interface_trigger "interface.*" "lan" /etc/init.d/stargate reload
 }
 
 start_service() {
@@ -43,6 +45,9 @@ start_service() {
     echo "sing-box missing: $command" >&2
     return 1
   }
+  if [ "${STARGATE_CONFIG_READY:-0}" != "1" ]; then
+    /usr/share/stargate/stargate.sh apply || return 1
+  fi
   [ -f "$config" ] || {
     echo "config missing: $config" >&2
     return 1
@@ -54,10 +59,14 @@ start_service() {
   procd_set_param stdout 1
   procd_set_param stderr 1
   procd_close_instance
+  /usr/share/stargate/stargate.sh firewall-apply-rules >/dev/null || {
+    rc=$?
+    echo "failed to apply Stargate firewall rules" >&2
+    /usr/share/stargate/stargate.sh firewall-clean >/dev/null 2>&1 || true
+    return "$rc"
+  }
 }
 
 reload_service() {
-  load_uci
-  [ "$app_enabled" = "1" ] || /usr/share/stargate/stargate.sh firewall-clean >/dev/null 2>&1 || true
-  echo "Stargate reload does not apply runtime changes automatically"
+  /usr/share/stargate/stargate.sh apply-runtime
 }

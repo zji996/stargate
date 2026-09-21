@@ -17,6 +17,21 @@ bool_value() {
   esac
 }
 
+validate_port_value() {
+  value="$1"
+  label="$2"
+  case "$value" in
+    ''|*[!0-9]*)
+      echo "$label must be numeric" >&2
+      return 1
+      ;;
+  esac
+  [ "$value" -gt 0 ] && [ "$value" -le 65535 ] || {
+    echo "$label must be between 1 and 65535" >&2
+    return 1
+  }
+}
+
 uci_get() {
   if [ -n "${UCI_CONFIG_DIR:-}" ]; then
     uci -q -c "$UCI_CONFIG_DIR" get "$app.$1.$2" 2>/dev/null || printf '%s' "$3"
@@ -62,6 +77,8 @@ load_config() {
   transparent_mode="$(uci_get inbound transparent_mode redirect)"
   transparent_listen="$(uci_get inbound transparent_listen 0.0.0.0)"
   transparent_port="$(uci_get inbound transparent_port 12345)"
+  netbird_proxy="$(bool_value "$(uci_get inbound netbird_proxy 1)")"
+  netbird_interface="$(uci_get inbound netbird_interface wt0)"
 
   node_type="$(uci_get node type anytls)"
   node_server="$(uci_get node server '')"
@@ -84,8 +101,16 @@ load_config() {
   dns_remote_detour="$(uci_get dns remote_detour anytls-out)"
   dns_hijack="$(bool_value "$(uci_get dns hijack_dns 1)")"
   dns_hijack_port="$(uci_get dns hijack_port 1053)"
+  dns_lan_port="$(uci -q get 'dhcp.@dnsmasq[0].port' 2>/dev/null || true)"
+  dns_lan_port="${dns_lan_port:-53}"
+  dns_ipv6_address="$(firewall_dns_ipv6_address)"
 
   rules_mode="$(uci_get rules mode blacklist)"
+  # Resolver fallback follows the routing mode; old dns.final values are ignored.
+  case "$rules_mode" in
+    whitelist|global_proxy) dns_final=remote-doh ;;
+    *) dns_final=direct-dns ;;
+  esac
   rules_default_outbound="direct"
   rules_source="$(uci_get rules source loyalsoldier)"
   rules_source_base_url="$(uci_get rules source_base_url https://cdn.jsdelivr.net/gh/Loyalsoldier/clash-rules@release)"
@@ -103,6 +128,7 @@ load_config() {
   rules_block_quic="$(uci_get rules block_quic 1)"
   backup_on_apply="$(uci_get safety backup_on_apply 1)"
   allow_proxy_conflict="$(bool_value "$(uci_get safety allow_proxy_conflict 0)")"
+  lan_ipv6_policy="$(uci_get safety lan_ipv6_policy keep)"
 }
 
 validate_config() {
@@ -122,13 +148,31 @@ validate_config() {
   case "$dns_final" in remote-doh|direct-dns|local) ;; *) echo "unsupported final resolver: $dns_final" >&2; exit 1 ;; esac
   case "$dns_local_type" in tcp|udp|tls|https) ;; *) echo "unsupported local dns type: $dns_local_type" >&2; exit 1 ;; esac
   case "$dns_remote_type" in https|tls|tcp|udp) ;; *) echo "unsupported remote dns type: $dns_remote_type" >&2; exit 1 ;; esac
-  case "$dns_hijack_port" in ''|*[!0-9]*) echo "DNS hijack port must be numeric" >&2; exit 1 ;; esac
-  [ "$dns_hijack_port" -gt 0 ] && [ "$dns_hijack_port" -le 65535 ] || { echo "DNS hijack port must be between 1 and 65535" >&2; exit 1; }
+  validate_port_value "$dns_hijack_port" "DNS hijack port" || exit 1
+  validate_port_value "$dns_lan_port" "dnsmasq port (local DNS is required)" || exit 1
+  [ "$dns_hijack_port" != "$dns_lan_port" ] || {
+    echo "DNS hijack port must differ from dnsmasq port" >&2
+    return 1
+  }
+  if [ "$transparent_proxy" = "1" ] && [ "$dns_hijack" = "1" ] &&
+     [ -s /proc/net/if_inet6 ] && [ -z "$dns_ipv6_address" ]; then
+    echo "IPv6 DNS redirect requires a global-scope LAN address (ULA preferred); retry after LAN is ready" >&2
+    return 1
+  fi
   case "$rules_mode" in blacklist|whitelist|global_proxy|direct) ;; *) echo "unsupported rules mode: $rules_mode" >&2; exit 1 ;; esac
   case "$transparent_mode" in redirect|tproxy) ;; *) echo "unsupported transparent mode: $transparent_mode" >&2; exit 1 ;; esac
-  case "$socks_port" in ''|*[!0-9]*) echo "SOCKS port must be numeric" >&2; exit 1 ;; esac
-  case "$http_port" in ''|*[!0-9]*) echo "HTTP port must be numeric" >&2; exit 1 ;; esac
-  case "$transparent_port" in ''|*[!0-9]*) echo "transparent proxy port must be numeric" >&2; exit 1 ;; esac
+  if [ "$transparent_proxy" = "1" ] && [ "$transparent_mode" != "redirect" ]; then
+    echo "transparent forwarding currently supports redirect mode only" >&2
+    return 1
+  fi
+  case "$netbird_interface" in
+    ''|*[!a-zA-Z0-9_.-]*) echo "invalid NetBird interface name" >&2; return 1 ;;
+  esac
+  [ "${#netbird_interface}" -le 15 ] || { echo "NetBird interface name is too long" >&2; return 1; }
+  case "$lan_ipv6_policy" in keep|disable_on_transparent) ;; *) echo "unsupported LAN IPv6 policy: $lan_ipv6_policy" >&2; exit 1 ;; esac
+  validate_port_value "$socks_port" "SOCKS port" || exit 1
+  validate_port_value "$http_port" "HTTP port" || exit 1
+  validate_port_value "$transparent_port" "transparent proxy port" || exit 1
   if [ "$rules_mode" = "blacklist" ] || [ "$rules_mode" = "whitelist" ]; then
     direct_runtime_rule_set="$(rule_set_runtime_path "$rules_direct_rule_set")"
     proxy_runtime_rule_set="$(rule_set_runtime_path "$rules_proxy_rule_set")"
@@ -231,7 +275,6 @@ uri_decode() {
   if command -v lua >/dev/null 2>&1; then
     lua - "$raw" <<'LUA'
 local s = arg[1] or ""
-s = s:gsub("+", " ")
 s = s:gsub("%%(%x%x)", function(h) return string.char(tonumber(h, 16)) end)
 io.write(s)
 LUA

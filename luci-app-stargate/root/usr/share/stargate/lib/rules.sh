@@ -351,6 +351,7 @@ rules_test() {
       printf 'Reason: private IP direct\n'
       return 0
     fi
+    rules_test_fixed_mode && return 0
     match="$(custom_ip_match "$rules_custom_direct_ips" "$target" 2>/dev/null || true)"
     if [ -n "$match" ]; then
       printf 'Decision: Direct\n'
@@ -422,18 +423,12 @@ rules_test() {
 
   case "$target" in *[!a-z0-9_.-]*|.*|*..*|*.) echo "Invalid domain or IP: $target" >&2; exit 1 ;; esac
 
-  if [ "$rules_mode" = "global_proxy" ]; then
-    printf 'Decision: Proxy\n'
-    printf 'Outbound: anytls-out\n'
-    printf 'Reason: global proxy mode\n'
+  if ! printf '%s' "$target" | grep -q '\.' || custom_domain_match "$(lan_dns_domains)" "$target" >/dev/null; then
+    printf 'Decision: Direct\nOutbound: direct\nReason: local domain (dnsmasq)\n'
     return 0
   fi
-  if [ "$rules_mode" = "direct" ]; then
-    printf 'Decision: Direct\n'
-    printf 'Outbound: direct\n'
-    printf 'Reason: direct only mode\n'
-    return 0
-  fi
+  rules_test_fixed_mode && return 0
+  printf 'Scope: Domain policy; destination IP overrides and connectivity are not tested\n'
 
   match="$(custom_domain_match "$rules_custom_direct_domains" "$target" 2>/dev/null || true)"
   if [ -n "$match" ]; then
@@ -467,15 +462,17 @@ rules_test() {
     return 0
   fi
 
-  if [ "$rules_mode" = "whitelist" ]; then
-    printf 'Decision: Proxy\n'
-    printf 'Outbound: anytls-out\n'
-    printf 'Reason: whitelist default\n'
-  else
-    printf 'Decision: Direct\n'
-    printf 'Outbound: direct\n'
-    printf 'Reason: blacklist default\n'
-  fi
+  printf 'Decision: Resolve required\nOutbound: pending\n'
+  printf 'Reason: No domain match; resolve via %s, then evaluate IP rules\n' "$dns_final"
+  printf 'Fallback: %s\n' "$rules_mode"
+}
+
+rules_test_fixed_mode() {
+  case "$rules_mode" in
+    global_proxy) printf 'Decision: Proxy\nOutbound: anytls-out\nReason: global proxy mode\n' ;;
+    direct) printf 'Decision: Direct\nOutbound: direct\nReason: direct only mode\n' ;;
+    *) return 1 ;;
+  esac
 }
 
 write_inline_domain_rule() {
@@ -491,7 +488,7 @@ write_inline_domain_rule() {
       count++
     }
     {
-      line = trim($0)
+      line = tolower(trim($0))
       if (line == "" || line ~ /^#/) next
       if (line ~ /^full:/) line = substr(line, 6)
       else if (line ~ /^domain:/) line = substr(line, 8)
@@ -501,5 +498,20 @@ write_inline_domain_rule() {
     }
   ')"
   [ -n "$domains" ] || return 0
-  printf '{ "domain_suffix": [%s], "outbound": "%s" }' "$domains" "$outbound"
+  printf '{ "domain_suffix": [%s], "%s": "%s" }' "$domains" "${3:-outbound}" "$outbound"
+}
+
+lan_dns_domains() {
+  {
+    printf '%s\n' lan localhost home.arpa 10.in-addr.arpa 168.192.in-addr.arpa 127.in-addr.arpa 254.169.in-addr.arpa
+    uci -q get 'dhcp.@dnsmasq[0].domain' 2>/dev/null || true
+    # Private reverse queries belong to dnsmasq's DHCP/hosts view.
+    awk 'BEGIN { for (i=16;i<=31;i++) print i ".172.in-addr.arpa"; for (i=64;i<=127;i++) print i ".100.in-addr.arpa" }'
+    printf '%s\n' c.f.ip6.arpa d.f.ip6.arpa 8.e.f.ip6.arpa 9.e.f.ip6.arpa a.e.f.ip6.arpa b.e.f.ip6.arpa
+  } | awk '{ v=tolower($0); if (v ~ /^[a-z0-9_-]+(\.[a-z0-9_-]+)*$/ && !seen[v]++) print v }'
+}
+
+write_lan_domain_match() {
+  lan_domains="$(lan_dns_domains | awk '{ if (count++) printf ","; printf "\"%s\"", $0 }')"
+  printf '"domain_suffix": [%s], "domain_regex": ["^[^.]+$"]' "$lan_domains"
 }

@@ -94,6 +94,7 @@ anytls://password@host:8443/?insecure=1
 - [docs/current.md](docs/current.md)：当前目标、状态、边界和验收方式。
 - [docs/reference/architecture.md](docs/reference/architecture.md)：当前架构和设计原则。
 - [docs/reference/luci-platform.md](docs/reference/luci-platform.md)：LuCI 管理前端和第一版平台设计。
+- [docs/reference/s20m-nftables-build.md](docs/reference/s20m-nftables-build.md)：S20M/S20L nftables 固件编译适配和刷后验证。
 - [docs/roadmap.md](docs/roadmap.md)：后续阶段规划。
 
 本地结构检查：

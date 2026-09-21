@@ -12,11 +12,60 @@ sing-box version
 command -v curl
 df -h /tmp
 free
+ubus call luci getFeatures 2>/dev/null || true
 ```
 
-不要为了补依赖直接执行全量 `opkg upgrade`。OpenWrt 上全量升级容易引入内核模块、nftables/firewall4 和用户态包版本不匹配。缺什么装什么，安装防火墙相关依赖前先确认当前固件是 fw3/iptables 还是 fw4/nftables。
+不要为了补依赖直接执行全量包升级。OpenWrt 上全量升级容易引入内核模块、nftables/firewall4 和用户态包版本不匹配。缺什么装什么，安装防火墙相关依赖前先确认当前固件是 fw3/iptables 还是 fw4/nftables。
 
 Stargate 当前只管理自己的 sing-box 配置、服务和防火墙规则，不应停用或改写 PassWall2、OpenClash、NetBird 等其他服务。实机排障时如果需要关闭其他代理，应由操作者明确决定。
+
+内存较小的 OpenWrt 设备不建议同时承担 Stargate 透明代理和 NetBird userspace WireGuard。实机已观测到 NetBird userspace 进程 RSS 可到数十 MB，并在内存紧张时反复成为 OOM victim。更稳的做法是把 NetBird 安装在实际需要组网访问的终端上，路由器只保留普通上游路由/NAT。
+
+## 包管理和安装
+
+OpenWrt 24 后续固件可能使用 `apk` 取代 `opkg`。先看系统特性，不要按习惯混装旧包管理器：
+
+```sh
+ubus call luci getFeatures 2>/dev/null || true
+command -v apk || true
+command -v opkg || true
+```
+
+如果结果是 `apk=true`、`opkg=false`，就使用 `apk add` 安装缺失依赖，不要恢复或混装 `opkg`。新版 LuCI 软件包页面已经会按系统特性使用 apk；混装两个包数据库收益很小，反而容易造成依赖状态不一致。
+
+实机安装 Stargate LuCI 版时，优先使用系统包管理器安装 sing-box，再部署本仓库文件：
+
+```sh
+apk add sing-box
+sing-box version
+```
+
+仓库文件对应目标路径：
+
+- `luci-app-stargate/root/*` 展开到 `/`。
+- `luci-app-stargate/htdocs/*` 展开到 `/www`。
+- `luci-app-stargate/luasrc/*` 展开到 `/usr/lib/lua/luci`。
+- `po/zh-cn/stargate.po` 编译为 `stargate.zh-cn.lmo` 后放到 `/usr/lib/lua/luci/i18n/`。
+
+部署后设置可执行权限并刷新 LuCI：
+
+```sh
+chmod 755 /etc/init.d/stargate /usr/share/stargate/stargate.sh
+rm -rf /tmp/luci-indexcache* /tmp/luci-modulecache* /tmp/luci-cache /tmp/rpcdcache
+/etc/init.d/rpcd restart
+/etc/init.d/uhttpd restart
+```
+
+未配置节点时，Stargate 服务保持 `disabled` 或 `inactive` 是正常状态。此时后端应仍能返回状态，LuCI 菜单也应出现在索引中：
+
+```sh
+/usr/share/stargate/stargate.sh status
+/usr/share/stargate/stargate.sh firewall-status
+/etc/init.d/stargate status
+grep -R "admin/services/stargate\|Stargate" /tmp/luci-indexcache* /tmp/luci-modulecache* 2>/dev/null
+```
+
+如果 LuCI JS 菜单不可见，确认 `/usr/share/luci/menu.d/luci-app-stargate.json`、`/www/luci-static/resources/view/stargate/*.js` 和 `/usr/share/rpcd/acl.d/luci-app-stargate.json` 已部署。如果旧式 CBI fallback 不可见，确认 `luasrc` 文件被放到 `/usr/lib/lua/luci/` 下，而不是 `/usr/lib/lua/` 下。
 
 ## 推荐启用顺序
 
@@ -76,7 +125,7 @@ dns: exchange failed for example.com. IN A: unexpected EOF
 
 优先检查远端 DNS 出站路径和 DoH 自举配置，而不是简单过滤日志。IP 形式 DoH 在部分网络里更容易被重置或表现为 EOF；域名 DoH 加 `domain_resolver` 更稳定，也更符合当前默认配置。
 
-DNS 重定向默认开启，但只有透明代理防火墙规则应用后才真正接管局域网设备的 TCP/UDP 53。DNS 重定向规则必须排在通用透明代理 TCP redirect 规则之前，否则 TCP/53 可能被错误送进透明代理入站。
+DNS 重定向默认开启，但只有透明代理防火墙规则应用后才真正接管受管设备的 IPv4/IPv6 TCP/UDP 53。IPv6 DNS 绑定固定 LAN 地址并 DNAT 到该地址；不要改成通配监听加 REDIRECT，否则 UDP 回复可能无法还原源端口。DNS 重定向规则必须排在通用透明代理 TCP redirect 规则之前，否则 TCP/53 可能被错误送进透明代理入站。
 
 ## QUIC 和 UDP
 
@@ -90,9 +139,21 @@ redirect 模式只处理 IPv4 TCP。它不会代理普通 UDP，也不会代理 
 
 防火墙后端自动优先 nftables，缺失时回退 iptables。不同 OpenWrt 固件可能实际只可用其中一种，实机判断应以 Stargate status 和系统命令结果为准。
 
-透明代理入口需要插到 PREROUTING 和 FORWARD 链前部，避免被已有的 zone、bridge、physdev 或自定义 ACCEPT 规则提前放行。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。
+nft 透明代理使用 PREROUTING NAT -110，IPv6/QUIC guard 使用 PREROUTING filter -10；不能把 nft guard 放回 FORWARD，NetBird 会向其他 FORWARD 链自动插入接受规则。iptables fallback 仍使用既有链前插方式，其 NetBird guard 兼容性尚未验收。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。默认发现 PassWall2、PassWall、OpenClash 已启用或运行时拒绝应用透明转发，除非显式设置 `safety.allow_proxy_conflict=1` 或 `STARGATE_ALLOW_PROXY_CONFLICT=1`。
 
-直连 CIDR 在 iptables/ipset 可用时会进入 `STARGATE_DIRECT4` 绕过集合。能在 IP 层确定直连的流量应尽量绕过 sing-box，减少日志噪声和路由器负载。
+fw4/nftables 上不要照搬 iptables 写法。透明代理全 TCP 匹配应写成 `meta l4proto tcp redirect to :PORT`，不能写成 `tcp redirect`。大量直连 CIDR 应放进命名 interval set；上游 CIDR 可能重叠，set 需要 `auto-merge`，否则会报 `conflicting intervals specified`。
+
+Stargate 的 nft PREROUTING 使用 `dstnat - 10`。一些固件会创建 `inet dnsmasq` 并以 `dstnat - 5` 把所有 UDP/53 提前重定向到 dnsmasq，PassWall2 也可能使用 `dstnat - 1`；如果 Stargate 仍使用默认 `dstnat`，页面会显示防火墙 Active，但 DNS 请求实际永远到不了 sing-box，受污染的解析地址随后会让透明代理连接错误目标。排障时应查看 `nft -a list table inet stargate` 的规则计数器，确认 DNS redirect 和 transparent redirect 都有命中。
+
+防火墙应用失败必须向 `apply-runtime` 透传非零退出码。否则会出现 UCI 已勾选、sing-box 已运行，但 `nft list table inet stargate` 不存在的半成功状态；Overview 也会让人误以为透明代理已接管。
+
+配置应用脚本生成并校验配置后，会以 `STARGATE_CONFIG_READY=1` 调用 init 启动或重启。init 在普通开机启动时仍会按 UCI 生成配置，但收到该标记时只校验现有配置，避免一次保存触发两次 apply 并把 `config.json.bak` 覆盖为当前配置。显式 rollback 重启也必须携带同一标记，否则 init 会立即按当前 UCI 重新生成配置并撤销回滚。
+
+`direct4` / `STARGATE_DIRECT4` 只含私网和保留地址。公网 CIDR 不提前绕过，否则代理域名解析到国内 CDN 时，规则测试会显示 Proxy、实际却走 Direct。国内公网 TCP 进入 sing-box 后仍可直连，需观察核心负载。
+
+iptables 后端应额外保护透明代理入站端口，拒绝 LAN 设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是路由器 transparent port，不应被这条防护影响；直连该端口会让 sing-box redirect 入站拿不到原始目标，产生 `get redirect destination: no such file or directory`。
+
+如果上游网络通过 NAT 或静态路由提供额外私网网段，例如 `192.168.8.0/24`，应确认该网段在 `STARGATE_DIRECT4` 直连集合中，并用 `ip route get` 验证它走普通上游路由而不是透明代理或已卸载的组网接口。
 
 ## 日志判断
 
@@ -124,7 +185,7 @@ LuCI 侧至少验证：
 - Overview 保存/应用能启动本机代理。
 - 关闭本机代理后服务和自启状态都会关闭。
 - Rules 更新能完成，策略测试不刷新整页也能返回结果。
-- DNS 默认值是直连 TCP DNS + 远端域名 DoH。
+- DNS 是直连 TCP DNS + 代理域名 DoH；模式决定兜底，用户覆盖优先于基础规则，基础 proxy 优先于 direct。分别测试 IPv4/IPv6、TCP/UDP DNS，以及 `.lan` 内网解析。
 - Advanced 应用和清理转发只影响 Stargate 自己的规则。
 - Logs 页能查看过滤日志和原始日志。
 
@@ -137,3 +198,5 @@ curl -I --proxy http://127.0.0.1:10809 https://github.com/
 ```
 
 透明代理启用后，再从一台局域网设备重复验证国内站、海外站和常用应用。若出现 ChatGPT、Google、Meta、Twitter/X 等显示国内 IP，优先检查 DNS 重定向、规则命中、GeoIP `.srs`、QUIC 阻断和服务是否加载了新配置。
+
+NetBird exit node 的当前基础、控制台配置设计和未完成验收见 [出口设计](netbird-exit-node.md)。

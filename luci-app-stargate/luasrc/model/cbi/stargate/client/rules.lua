@@ -40,12 +40,13 @@ local function depends_rule_mode(option)
 end
 
 m = Map("stargate", translate("Rules"))
+common.prepare_map(m)
 m.description = ui_text("Use Loyalsoldier clash-rules for domain rules and sing-box GeoIP rule-sets for IP CIDR routing; user overrides are only for exceptions.", "域名规则使用 Loyalsoldier clash-rules，IP 分流使用 sing-box GeoIP rule-set；用户规则只用于少量例外覆盖。")
 
 local message = nil
 local test_output = nil
 local test_target = trim(http.formvalue("stargate_rules_target") or "")
-local action = http.formvalue("stargate_rules_action")
+local action = common.action("stargate_rules_action")
 if action == "update" then
   sys.exec("/usr/share/stargate/stargate.sh rules-update-start >/dev/null 2>&1")
   message = ui_text("Rule update started. Refresh status in a moment.", "规则更新已开始，稍后刷新状态查看结果。")
@@ -138,7 +139,7 @@ function actions.cfgvalue()
     '</style>',
     '<div class="stargate-rule-actions">',
     '<div class="stargate-rule-action-row">',
-    '<input class="cbi-button cbi-button-apply" type="button" value="' .. ui_text("Update base rules", "更新基础规则") .. '" onclick="location.href=\'' .. base .. '?stargate_rules_action=update\'" />',
+    '<button class="cbi-button cbi-button-apply" type="button" data-field="stargate_rules_action" data-stargate-action="update">' .. ui_text("Update base rules", "更新基础规则") .. '</button>',
     '<input class="cbi-button" type="button" value="' .. ui_text("Refresh status", "刷新状态") .. '" onclick="location.href=\'' .. base .. '?stargate_rules_action=status\'" />',
     '</div>',
     '<div class="stargate-rule-status">' .. rule_status_html(message) .. '</div>',

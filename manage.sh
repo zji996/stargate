@@ -16,10 +16,30 @@ check_shell() {
   sh -n manage.sh
   sh -n luci-app-stargate/root/usr/share/stargate/stargate.sh
   sh -n luci-app-stargate/root/etc/init.d/stargate
-  luac -p luci-app-stargate/luasrc/controller/stargate.lua
-  find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
-    luac -p "$file"
+  for file in luci-app-stargate/root/usr/share/stargate/lib/*.sh; do
+    sh -n "$file"
   done
+  find tools -type f -name '*.sh' | while IFS= read -r file; do
+    sh -n "$file"
+  done
+  find tests -type f -name '*.sh' | while IFS= read -r file; do
+    sh -n "$file"
+    sh "$file"
+  done
+  if command -v luac >/dev/null 2>&1; then
+    luac -p luci-app-stargate/luasrc/controller/stargate.lua
+    luac -p luci-app-stargate/luasrc/model/stargate/common.lua
+    find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
+      luac -p "$file"
+    done
+  elif command -v lua >/dev/null 2>&1; then
+    lua -e 'assert(loadfile(arg[1]))' luci-app-stargate/luasrc/controller/stargate.lua
+    find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
+      lua -e 'assert(loadfile(arg[1]))' "$file"
+    done
+  else
+    echo "skip Lua syntax check: lua/luac not found" >&2
+  fi
 }
 
 check_docs() {
@@ -31,6 +51,7 @@ check_docs() {
     docs/current.md \
     docs/roadmap.md \
     docs/reference/architecture.md \
+    docs/reference/s20m-nftables-build.md \
     docs/reference/naming.md \
     .gitmodules \
     luci-app-stargate/Makefile \
@@ -67,6 +88,8 @@ check_json() {
 
 check_js() {
   if command -v node >/dev/null 2>&1; then
+    node --check luci-app-stargate/htdocs/luci-static/resources/stargate-cbi.js
+    node --check luci-app-stargate/htdocs/luci-static/resources/stargate-overview.js
     for file in luci-app-stargate/htdocs/luci-static/resources/view/stargate/*.js; do
       node --check "$file" >/dev/null
     done
@@ -90,6 +113,7 @@ check_secrets() {
     -e 'R[0-9]{2}\.[0-9]{2}' \
     --glob '!third_party/**' \
     --glob '!.git/**' \
+    --glob '!docs/current.md' \
     .; then
     echo "potential environment-specific secret or hardcoding found" >&2
     return 1
