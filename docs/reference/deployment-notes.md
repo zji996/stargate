@@ -151,7 +151,7 @@ Stargate 的 nft PREROUTING 使用 `dstnat - 10`。一些固件会创建 `inet d
 
 `direct4` / `STARGATE_DIRECT4` 只含私网和保留地址。公网 CIDR 不提前绕过，否则代理域名解析到国内 CDN 时，规则测试会显示 Proxy、实际却走 Direct。国内公网 TCP 进入 sing-box 后仍可直连，需观察核心负载。
 
-iptables 后端应额外保护透明代理入站端口，拒绝 LAN 设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是路由器 transparent port，不应被这条防护影响；直连该端口会让 sing-box redirect 入站拿不到原始目标，产生 `get redirect destination: no such file or directory`。
+iptables 和 nft 后端都必须保护透明代理入站端口，拒绝受管设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是该端口；nft 后端在 NAT 之后依据 `ct status dnat` 放行真实重定向连接，再拒绝没有 DNAT 状态的直连。缺少这层保护时，sing-box 可能把路由器自身的透明端口继续作为原目标递归拨号，短时间耗尽文件描述符。procd 实例同时显式设置与系统 sing-box 包一致的 `nofile` 高限额，但它只是正常并发余量，不能代替入口保护。
 
 如果上游网络通过 NAT 或静态路由提供额外私网网段，例如 `192.168.8.0/24`，应确认该网段在 `STARGATE_DIRECT4` 直连集合中，并用 `ip route get` 验证它走普通上游路由而不是透明代理或已卸载的组网接口。
 

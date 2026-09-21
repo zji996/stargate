@@ -80,6 +80,8 @@ LuCI 版后端还提供两个显式启动动作：
 
 LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
 
+Stargate 的 procd 实例显式设置 `nofile=1000000`，与设备自带 sing-box init 的限额保持一致。透明代理连接会同时占用入站、出站和 splice 管道描述符；防火墙入口保护仍是首要防线，高限额只用于承受正常并发，不能替代环路阻断。
+
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
 
 ### NetBird 接管边界
@@ -152,7 +154,7 @@ IP 规则只能检查当时已知的目标 IP；DNS 使用域名策略，不能�
 nftables 表 `inet stargate` 先完整预检，再在一个事务内替换：
 
 - NAT PREROUTING `-110`：先处理 NetBird 其他私网目标绕过，再做 IPv4/IPv6 DNS、私网/保留地址绕过，最后接管公网 IPv4 TCP。
-- filter PREROUTING `-10`：DNS 已经 DNAT，保留回复流量、本机 INPUT、NetBird 私网与本地 IPv6；拒绝受管公网 IPv6，按开关拒绝 UDP/443。
+- filter PREROUTING `-10`：DNS 已经 DNAT；只允许带 DNAT 状态的连接进入透明端口，直接访问该端口会被拒绝，防止 redirect 入站把自身端口当成原目标并形成递归连接；随后保留回复流量、本机 INPUT、NetBird 私网与本地 IPv6，拒绝受管公网 IPv6，并按开关拒绝 UDP/443。
 
 guard 不放在 FORWARD，避免 NetBird 自动插入的放行规则抢先结束检查。也不能将 filter guard 插在多个 NAT 优先级之间：S20M 实测这时可能先看到未 DNAT 的公网 IPv6 DNS 并误拒绝，所以 guard 放在所有常规 DNAT hook 之后的 -10。S20M 的内核/nft 已验证 PREROUTING reject；其他固件必须通过本机 nft 预检后应用，不支持时保留旧表。Stargate 不增加其他服务的 INPUT/FORWARD 授权。
 
