@@ -230,6 +230,7 @@ start_service() {
   "$command" check -c "$config" || return 1
   procd_open_instance
   procd_set_param command "$command" run -c "$config"
+  procd_set_param limits nofile="1000000 1000000"
   procd_set_param respawn 3600 5 5
   procd_set_param stdout 1
   procd_set_param stderr 1
