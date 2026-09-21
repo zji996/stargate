@@ -116,13 +116,32 @@ Stargate 不修改 dnsmasq 上游、DHCP 或 RA。本地域名固定交回 dnsma
 
 规则来自 Loyalsoldier clash-rules 和 MetaCubeX GeoIP `.srs`：direct/private/cncidr/lancidr 合成 `direct.json/.srs`；proxy/gfw/tld-not-cn/telegramcidr 合成 `proxy.json/.srs`；另加载 CN、Google、Facebook、Twitter、Telegram GeoIP 数据。更新为显式操作，先在临时目录下载和编译完整文件，再安装并同步运行态；不从 `third_party/` 加载，不提供离线伪造数据。
 
+### 多出口与独立入站端口设计
+
+Stargate 支持多出口分流：主节点承载透明代理与默认本地入站，辅助节点可配置独立代理入站端口（如专属 SOCKS/HTTP 端口），默认监听 `0.0.0.0` 供局域网设备使用。
+
+核心分流原则为：“直连规则全局共用，代理规则按入站映射到对应出口”。
+1. 全局直连：私网 IP、局域网域名（`.lan` 等）、用户直连域名与 IP、基础 direct 规则集（Loyalsoldier direct + geoip-cn）无论来自哪个入站端口，统统直连 `direct`。
+2. 代理流量按入站导流：当流量判定需要代理时（命中 proxy 规则集、海外 GeoIP 或用户代理域名/IP），带有辅助节点标签的入站流量流向对应节点出站（如 `out-node-<id>`），主入口流量流向主节点 `anytls-out`。
+3. 二次判定与兜底：未命中域名的 IP 二次解析后同样按入站区分出口；白名单/全局代理模式下的兜底路由也按来源入站绑定到对应节点。
+
+实现边界：
+
+- 只有 `enable_port=1` 的命名 `node_item` 参与；匿名 section 被跳过。入站 tag 为 `in-socks-<id>` / `in-http-<id>`。
+- 与当前节点 server/port/password 完全相同的节点不生成第二个出站，其入站直接由主规则覆盖并使用 `anytls-out`，避免对同一服务器维持两套 AnyTLS 会话池。
+- `global_proxy` 模式下辅助端口的全部流量（含国内）走对应节点；`direct` 模式仍开放端口但全部直连。四种模式下 DNS 规则共享，不按入站区分。
+- 独立端口在节点添加/编辑时即拒绝与主 SOCKS/HTTP、透明代理端口、DNS 劫持端口和其他节点独立端口冲突；监听地址必须是 IPv4/IPv6 字面量。生成配置时再次校验。
+- Stargate 不为独立端口增加防火墙规则。`0.0.0.0` 会同时绑定 WAN，依赖 fw4 默认 WAN 入站 REJECT；表单中给出提示。局域网访问路由器私网地址不会被透明代理 REDIRECT 抓走。
+- 与系统服务（53/80/443/22 等）的端口冲突不在此处检查，sing-box 启动失败时走既有回滚路径。
+
 黑名单/白名单的路由顺序：
 
 1. DNS 劫持、sniff、QUIC 拒绝及私网直连；本地域名先用 `lan-dns` 解析再直连。
-2. 用户直连域名、用户直连 IP、用户代理域名、用户代理 IP。
-3. 内置代理 CIDR 补充、基础 proxy、GeoIP proxy、基础 direct、GeoIP direct。
-4. 尚未命中时按模式 DNS 兜底解析一次，再检查私网、用户 IP 与基础/GeoIP IP 规则。内置 CIDR 补充也参与解析后的复判。
-5. 黑名单未命中直连，白名单未命中走 AnyTLS。全局代理/仅直连跳过用户覆盖与基础规则，仅保留本地/私网及协议处理规则。
+2. 用户直连域名、用户直连 IP。
+3. 按入站区分的用户代理域名、用户代理 IP，以及主入站的用户代理规则。
+4. 内置代理 CIDR 补充、基础 proxy、GeoIP proxy（按入站区分导出到对应辅助出站，最后回退主出站）；基础 direct、GeoIP direct 全局直连。
+5. 尚未命中时按模式 DNS 兜底解析一次，再检查私网、用户 IP 与基础/GeoIP IP 规则（同样按入站导出）。
+6. 黑名单未命中直连，白名单未命中按入站走对应节点或 AnyTLS。全局代理/仅直连跳过用户覆盖与基础规则，仅保留本地/私网及协议处理规则。
 
 IP 规则只能检查当时已知的目标 IP；DNS 使用域名策略，不能提前评估尚未解析出的 IP。Rules 测试明确区分域名策略和实际连接：域名输入不验证目标 IP、sniff 和连通性；没有域名命中时返回“需要解析”，不假装已经完成 GeoIP 复判。
 

@@ -37,8 +37,18 @@ check_shell() {
     find luci-app-stargate/luasrc/model/cbi/stargate -type f -name '*.lua' | while IFS= read -r file; do
       lua -e 'assert(loadfile(arg[1]))' "$file"
     done
+  elif command -v docker >/dev/null 2>&1 && docker image inspect nickblah/lua:5.1 >/dev/null 2>&1; then
+    # Local fallback: reuse an already pulled Lua 5.1 image, never pull during check.
+    docker run --rm -v "$PWD/luci-app-stargate/luasrc:/src:ro" nickblah/lua:5.1 sh -c '
+      set -e
+      luac -p /src/controller/stargate.lua
+      luac -p /src/model/stargate/common.lua
+      find /src/model/cbi/stargate -type f -name "*.lua" | while IFS= read -r file; do
+        luac -p "$file"
+      done
+    '
   else
-    echo "skip Lua syntax check: lua/luac not found" >&2
+    echo "skip Lua syntax check: lua/luac not found (install lua5.1 or pull nickblah/lua:5.1 for docker fallback)" >&2
   fi
 }
 
@@ -104,19 +114,38 @@ check_i18n() {
 }
 
 check_secrets() {
-  if rg -n -I \
-    -e '192\.168\.[0-9]{1,3}\.[1-9][0-9]{0,2}' \
-    -e '[0-9]{6,12}Qwe' \
-    -e 'ssh''pass' \
-    -e 'root@''192\.' \
-    -e 'Bleach''Wrt' \
-    -e 'R[0-9]{2}\.[0-9]{2}' \
-    --glob '!third_party/**' \
-    --glob '!.git/**' \
-    --glob '!docs/current.md' \
-    .; then
-    echo "potential environment-specific secret or hardcoding found" >&2
-    return 1
+  rg_bin=""
+  if command -v rg >/dev/null 2>&1; then
+    rg_bin="rg"
+  fi
+
+  if [ -n "$rg_bin" ]; then
+    if "$rg_bin" -n -I \
+      -e '192\.168\.[0-9]{1,3}\.[1-9][0-9]{0,2}' \
+      -e '[0-9]{6,12}Qwe' \
+      -e 'ssh''pass' \
+      -e 'root@''192\.' \
+      -e 'Bleach''Wrt' \
+      -e 'R[0-9]{2}\.[0-9]{2}' \
+      --glob '!third_party/**' \
+      --glob '!.git/**' \
+      --glob '!docs/current.md' \
+      .; then
+      echo "potential environment-specific secret or hardcoding found" >&2
+      return 1
+    fi
+  else
+    # Split literals the same way as the rg branch so this file never matches itself.
+    secret_pattern='192\.168\.[0-9]{1,3}\.[1-9][0-9]{0,2}|[0-9]{6,12}Qwe|ssh''pass|root@''192\.|Bleach''Wrt|R[0-9]{2}\.[0-9]{2}'
+    if grep -r -E -n -I \
+      --exclude-dir='third_party' \
+      --exclude-dir='.git' \
+      --exclude='current.md' \
+      -e "$secret_pattern" \
+      .; then
+      echo "potential environment-specific secret or hardcoding found" >&2
+      return 1
+    fi
   fi
 }
 

@@ -2,7 +2,18 @@
 
 ## 当前目标
 
-IPv6 DNS 与分流优先级修复已部署；下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
+多出口分流与独立代理入站端口已在仓库实现并通过本地与容器验证，待实机部署验收；IPv6 DNS 与分流优先级保持既有保障。下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
+
+## 2026-09-21 更新
+
+- 实现多出口分流与节点独立入站代理端口（Dedicated Port），尚未实机部署验收：
+  - 核心分流架构遵循“直连规则全局共用，代理规则按入站映射到对应出口”。
+  - 节点项（`node_item`）支持配置 `enable_port`、`socks_port`、`http_port`、`listen`。添加/编辑节点时即校验监听地址格式，并拒绝与主 SOCKS/HTTP、透明代理、DNS 劫持端口或其他节点独立端口冲突；生成配置时再次校验。
+  - sing-box `inbounds` 为启用独立端口的节点创建 `in-socks-<id>` / `in-http-<id>`；与当前节点（server/port/password 相同）的节点复用 `anytls-out`，其余节点生成 `out-node-<id>` AnyTLS 出站。匿名 UCI section 会被跳过。
+  - 分流规则在保持全局私网、局域网和国内直连的前提下，将辅助端口进来的 proxy 规则、海外 GeoIP 规则以及二次 DNS 解析判定结果，精确导向对应的辅助节点出口；主入站和复用主节点的入站流向 `anytls-out`。`global_proxy` 下辅助端口全部走对应节点，`direct` 下仍开端口但全部直连。
+  - LuCI CBI 节点弹窗与 JS view 支持独立端口配置，`status` JSON 增加 `aux_nodes`，概览显示已开放的独立端口；监听 `0.0.0.0` 会在表单提示保持防火墙 WAN 入站关闭，Stargate 不额外添加防火墙规则。
+  - `tests/routing.sh` / `tests/routing.py` 覆盖四种模式下的多入站判定、主节点别名、匿名 section、端口冲突和监听地址负向用例。`manage.sh check` 在缺少 lua 时可回退到已存在的 `nickblah/lua:5.1` Docker 镜像做 Lua 语法检查。
+  - 本地验证：`manage.sh check` 通过；四种模式生成配置经 sing-box v1.12.4 `check` 通过；在 `openwrt/rootfs` 容器中用真实 `uci` 验证了节点增改、冲突拒绝、`node-list`、`generate` 与 `status`。实机 S20M 尚未部署本次改动。
 
 ## 2026-09-14 更新
 
