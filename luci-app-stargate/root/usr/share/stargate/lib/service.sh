@@ -67,6 +67,7 @@ start_transparent_proxy() {
   transparent_mode="$mode"
   transparent_port="$port"
   validate_config
+  firewall_require_no_proxy_conflict || exit 1
   save_transparent_uci
   uci_cmd set "$app.global.enabled=1"
   ensure_inbound_section
@@ -172,6 +173,30 @@ status_json() {
   printf '"socks_port":"%s",' "$(printf '%s' "$socks_port" | json_escape)"
   printf '"http_listen":"%s",' "$(printf '%s' "$http_listen" | json_escape)"
   printf '"http_port":"%s",' "$(printf '%s' "$http_port" | json_escape)"
+  printf '"aux_nodes":['
+  first_aux=1
+  for aux_id in ${aux_node_ids:-}; do
+    eval "aux_label=\${aux_label_$aux_id:-$aux_id}"
+    eval "aux_socks=\${aux_socks_port_$aux_id:-}"
+    eval "aux_http=\${aux_http_port_$aux_id:-}"
+    eval "aux_listen=\${aux_listen_$aux_id:-0.0.0.0}"
+    eval "aux_outbound=\${aux_outbound_$aux_id:-out-node-$aux_id}"
+    if [ "$first_aux" = "1" ]; then
+      first_aux=0
+    else
+      printf ','
+    fi
+    aux_port_label="$(uci_get "$aux_id" port_label '')"
+    printf '{"id":"%s","label":"%s","socks_port":"%s","http_port":"%s","listen":"%s","outbound":"%s","port_label":"%s"}' \
+      "$aux_id" \
+      "$(printf '%s' "$aux_label" | json_escape)" \
+      "$(printf '%s' "$aux_socks" | json_escape)" \
+      "$(printf '%s' "$aux_http" | json_escape)" \
+      "$(printf '%s' "$aux_listen" | json_escape)" \
+      "$aux_outbound" \
+      "$(printf '%s' "$aux_port_label" | json_escape)"
+  done
+  printf '],'
   printf '"service":%s,' "$(printf '%s' "$service_state" | json_escape | sed 's/^/"/;s/$/"/')"
   printf '"singbox":%s' "$(printf '%s' "$singbox_version" | json_escape | sed 's/^/"/;s/$/"/')"
   printf '}\n'

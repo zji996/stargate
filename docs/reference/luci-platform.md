@@ -94,6 +94,7 @@ Node 页参考 PassWall2 的节点列表体验，但第一版范围更窄：
 - 支持通过列表行的单选状态和“使用此节点”按钮把节点设为当前使用节点。
 - 支持删除节点。
 - “使用”节点只复制到 `config node 'node'`，不会自动启动服务，也不会自动应用透明代理。
+- 添加/编辑弹窗可为节点开启独立端口（`enable_port`、`socks_port`、`http_port`、`listen`），列表行显示 `SOCKS: 端口` / `HTTP: 端口` 标签；后端 `node-list` 输出 12 列（追加 `enable_port`、`socks_port`、`http_port`、`listen`），`status` JSON 增加 `aux_nodes`（含 `outbound`，复用主节点时为 `anytls-out`）。JS view 的 Node 页只暴露独立端口字段，节点本身仍通过后端动作增删改。
 
 暂不支持订阅、批量导入、多协议转换、分组拖拽、自动测速排序。VLESS、Trojan、VMess 等协议应等后端生成器真正支持后再开放，避免 UI 看起来支持但运行层不可用。
 

@@ -70,17 +70,31 @@ grep -R "admin/services/stargate\|Stargate" /tmp/luci-indexcache* /tmp/luci-modu
 ## 推荐启用顺序
 
 1. 只配置节点，不启用透明代理。
-2. 勾选本机代理，保存并应用。
-3. 确认 Overview 中 Baidu、Google、GitHub 检测能体现本机代理路径。
-4. 在 Rules 页更新基础规则。
-5. 用 Rules 页测试策略确认常见目标：
+2. 保存 Overview 配置；保存动作只写 UCI，不启动服务或应用转发。
+3. 需要测试 Stargate 时，再显式执行 `/usr/share/stargate/stargate.sh start`，确认只监听本机 SOCKS/HTTP。
+4. 确认 Overview 中 Baidu、Google、GitHub 检测能体现本机代理路径。
+5. 在 Rules 页更新基础规则。
+6. 用 Rules 页测试策略确认常见目标：
    - `baidu.com` 应为 Direct。
    - `google.com`、`chatgpt.com`、`github.com` 应按规则走 Proxy 或预期路径。
    - 直接测试 Google、Meta、Twitter/X、Telegram 的 IP 时，应优先由 GeoIP proxy rule-set 或内置补丁命中。
-6. 再勾选透明代理并应用转发规则。
-7. 从局域网设备访问国内站、海外站、游戏或组网服务，观察是否符合“命中 Proxy 才代理，直连目标保持直连”。
+7. 确认 PassWall2、PassWall、OpenClash 等其他透明代理已停用后，再勾选透明代理并显式应用转发规则。
+8. 从局域网设备访问国内站、海外站、游戏或组网服务，观察是否符合“命中 Proxy 才代理，直连目标保持直连”。
 
-透明代理默认不启用。只有本机代理已经启用后，才应该允许透明代理生效。关闭代理时，`global.enabled=0` 应停止服务、禁用 init 自启并清理 Stargate 防火墙规则。
+透明代理默认不启用。只有本机代理已经启用后，才应该允许透明代理生效。保存 UCI 不等于运行态切换；关闭运行态应显式执行 `/usr/share/stargate/stargate.sh stop`，它会停止服务、禁用 init 自启并清理 Stargate 防火墙规则。
+
+## 2026-05-12 断网复盘
+
+本次实机问题的直接风险点是 LuCI 保存路径过于激进：Overview 的 Save & Apply 和 CBI fallback 的 `on_after_commit` 会立即调用 `apply-runtime`，init `reload` 也会按 UCI 自动同步运行态。只要页面里留下了 `transparent_proxy=1`，一次普通保存就可能启动 Stargate 并应用透明转发。
+
+透明转发本身会接管 LAN 侧 TCP、DNS 53、IPv6 guard 和 UDP/443 QUIC 阻断；当 PassWall2 已经在管理 DNS、nftables 和 xray 转发时，两个透明代理同时抢入口，国内域名解析和直连流量就可能被送进 Stargate 的未稳定规则或节点路径，表现为国内站无法访问。
+
+修复方向：
+
+- LuCI 保存只写 UCI，不再自动启动、停止或应用转发。
+- init `reload` 不再调用 `apply-runtime`，init `start` 不再自动应用防火墙规则。
+- 透明转发应用前只读检测 PassWall2、PassWall、OpenClash 等冲突代理，默认拒绝共存。
+- `global.auto_start=0` 保持默认，显式启动不会自动打开开机自启。
 
 ## 规则和 GeoIP
 
@@ -125,7 +139,7 @@ redirect 模式只处理 IPv4 TCP。它不会代理普通 UDP，也不会代理 
 
 防火墙后端自动优先 nftables，缺失时回退 iptables。不同 OpenWrt 固件可能实际只可用其中一种，实机判断应以 Stargate status 和系统命令结果为准。
 
-nft 透明代理使用 PREROUTING NAT -110，IPv6/QUIC guard 使用 PREROUTING filter -10；不能把 nft guard 放回 FORWARD，NetBird 会向其他 FORWARD 链自动插入接受规则。iptables fallback 仍使用既有链前插方式，其 NetBird guard 兼容性尚未验收。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。
+nft 透明代理使用 PREROUTING NAT -110，IPv6/QUIC guard 使用 PREROUTING filter -10；不能把 nft guard 放回 FORWARD，NetBird 会向其他 FORWARD 链自动插入接受规则。iptables fallback 仍使用既有链前插方式，其 NetBird guard 兼容性尚未验收。清理规则时只清理 Stargate 自己的链或表，不碰其他代理工具。默认发现 PassWall2、PassWall、OpenClash 已启用或运行时拒绝应用透明转发，除非显式设置 `safety.allow_proxy_conflict=1` 或 `STARGATE_ALLOW_PROXY_CONFLICT=1`。
 
 fw4/nftables 上不要照搬 iptables 写法。透明代理全 TCP 匹配应写成 `meta l4proto tcp redirect to :PORT`，不能写成 `tcp redirect`。大量直连 CIDR 应放进命名 interval set；上游 CIDR 可能重叠，set 需要 `auto-merge`，否则会报 `conflicting intervals specified`。
 
@@ -137,7 +151,7 @@ Stargate 的 nft PREROUTING 使用 `dstnat - 10`。一些固件会创建 `inet d
 
 `direct4` / `STARGATE_DIRECT4` 只含私网和保留地址。公网 CIDR 不提前绕过，否则代理域名解析到国内 CDN 时，规则测试会显示 Proxy、实际却走 Direct。国内公网 TCP 进入 sing-box 后仍可直连，需观察核心负载。
 
-iptables 后端应额外保护透明代理入站端口，拒绝 LAN 设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是路由器 transparent port，不应被这条防护影响；直连该端口会让 sing-box redirect 入站拿不到原始目标，产生 `get redirect destination: no such file or directory`。
+iptables 和 nft 后端都必须保护透明代理入站端口，拒绝受管设备直接访问路由器自身的 transparent port。正常 REDIRECT 流量的原始目标不是该端口；nft 后端在 NAT 之后依据 `ct status dnat` 放行真实重定向连接，再拒绝没有 DNAT 状态的直连。缺少这层保护时，sing-box 可能把路由器自身的透明端口继续作为原目标递归拨号，短时间耗尽文件描述符。procd 实例同时显式设置与系统 sing-box 包一致的 `nofile` 高限额，但它只是正常并发余量，不能代替入口保护。
 
 如果上游网络通过 NAT 或静态路由提供额外私网网段，例如 `192.168.8.0/24`，应确认该网段在 `STARGATE_DIRECT4` 直连集合中，并用 `ip route get` 验证它走普通上游路由而不是透明代理或已卸载的组网接口。
 

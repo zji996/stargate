@@ -2,13 +2,32 @@
 
 ## 当前目标
 
-优先打磨当前实际使用的 AnyTLS 协议体验，覆盖节点导入、连接稳定性、诊断和恢复。IPv6 DNS 与分流优先级修复已部署；NetBird exit node 发布和远端验收仍待完成，保持其他路由器和组网服务边界。
+优先打磨当前实际使用的 AnyTLS 协议体验，覆盖节点导入、连接稳定性、诊断和恢复。多出口分流与独立代理入站端口已完成解耦及可用端口自动推荐，并已部署实机验证；IPv6 DNS 与分流优先级保持既有保障。NetBird exit node 发布和远端验收仍待完成，保持其他路由器和组网服务边界。
 
 ## 2026-10-02 更新
 
 - 用户确认近期主要打磨实际使用的 AnyTLS 代理协议体验，多协议扩展不作为当前重点。
 - 新增 `third_party/anytls-go` 参考 submodule，来源为 `https://github.com/zji996/anytls-go.git`，跟踪 `zji-dev`，当前固定提交为 `4fd4b878c12df9e2de7cae5dc14f7315107f87fe`。
 - anytls-go 仅供协议实现和客户端/服务端行为对照，不参与 Stargate 构建、安装或运行；受管核心仍只有 sing-box。
+## 2026-09-22 更新
+
+- 完成独立端口改动复审并修复换绑失败时可能污染 UCI 暂存状态的问题：现在先校验目标节点、原节点、端口和监听地址，再一次性清理旧绑定并写入新绑定；允许换绑时沿用原端口。
+- 节点端口测试补充失败换绑不改动原节点及沿用原端口用例；公共端口校验与浏览器端校验拒绝非数字后缀和前导零，避免生成非法 JSON 数字或绕过冲突比较。
+- CBI 弹窗将节点下拉框纳入表单归属、标签关联和焦点循环；脚本内嵌节点信息增加安全转义。维护页与节点弹窗颜色改为跟随 LuCI 主题，并修正移动端备份区选择器。
+- 修复节点切换/删除提交时重复追加 `node_id`，导致 LuCI 将字段解析为数组并在 Lua `:match()` 处抛出运行时异常的问题；前端改为复用隐藏字段，CBI 后端同时归一化重复表单值。热修前备份为 `/root/stargate-node-form-fix-20260922-005706/backup-files.tar.gz`。
+- 修复 `node-use` 只更新 UCI、不生成配置也不重启服务的问题。启用状态下选择节点现在立即执行 `apply-runtime`；失败时恢复原主节点 UCI，并再次同步旧运行态，避免页面选择与 sing-box 实际出口分裂。修复前实机 UCI 已选择 `179.255.98.231`，但 `/etc/stargate/config.json` 仍运行 `69.63.200.32`；部署前备份为 `/root/stargate-node-runtime-fix-20260922-011026/backup-files.tar.gz`。重新应用后 UCI、状态接口和 `anytls-out` 均为 `179.255.98.231`，服务及 nft 防火墙正常，`check` 通过，Baidu 为 HTTP 200（165ms），Google 为 HTTP 204（360ms）。
+- 完成 `192.168.6.1` 的分流、DNS、NetBird 私网和防护边界复验，并修复 nft 后端允许直接连接透明端口的问题：直连 `12345` 原本会让 redirect 入站递归连接自身并耗尽 `4096` 个文件描述符；现在只放行带 DNAT 状态的真实透明连接，直接访问立即拒绝，同时按系统 sing-box 服务的既有配置把进程 `nofile` 提升至 `1000000`。部署前备份为 `/root/stargate-transparent-guard-20260922-015409/backup-files.tar.gz` 和同目录 `stargate.nft`。修复后直连 guard 命中且 FD 不增长，隔离 LAN 的 Baidu 200、Google 204、IPv4 UDP/IPv6 TCP DNS、到 `192.168.8.16` 的私网路由均通过；主节点和辅助节点出口分别核对为 `179.255.98.231`、`69.63.200.32`，各 5 轮 Baidu/Google 回归全部成功。没有修改 `192.168.8.1`；其自身会提前接管客户端 53 端口，因此当前机器不能代替外部 NetBird exit client 完成 DNS/默认路由控制面验收。
+- 已重新同步至 `192.168.6.1`。本轮部署前备份为 `/root/stargate-review-20260922-003957/backup-files.tar.gz`；13 组部署文件 MD5 与本地一致，Shell/Lua 加载、`node-next-ports`、13 列 `node-list`、`check`、JSON 状态解析和 UCI 暂存检查均通过。服务保持 `running`（sing-box 1.12.25），Baidu 为 HTTP 200（175ms），Google 为 HTTP 204（375ms）。
+
+## 2026-09-21 更新
+
+- 完成多出口分流与节点入站/出站解耦、独立分流端口（Dedicated Port）自动错开推荐与实机部署：
+  - 核心分流架构遵循“直连规则全局共用，代理规则按入站映射到对应出口”。
+  - 端口防冲突与自动错开：新增 `node-next-ports` 自动扫描主入站、透明代理、DNS 劫持、其他节点独立端口以及系统监听端口（`/proc/net/tcp`），自动推荐连续可用的端口对（如 `10818/10819`、`10820/10821`）；前端表单提供实时冲突比对校验与保存拦截。
+  - 出站与入站彻底解耦：节点卡片仅作为出站池（增删改查出口凭据），节点编辑弹窗剥离端口字段；节点下方新增“分流与入站端口”（Inbound Ports）独立卡片，上部整合主入站配置与当前激活节点绑定说明，下部提供独立分流端口表格与“+ 添加独立端口”弹窗，支持按端口设置用途/备注，并可随时切换绑定的出口节点而自动解绑旧节点。
+  - 节点编辑保护：`node_update` 在无端口参数传入时自动保留已有独立端口配置，避免编辑节点属性时误清空独立端口。
+  - LuCI CBI / JS view 同步支持：`node.lua`、`node.js`、`overview.lua`、`overview.js`、`stargate.po` / `stargate.pot` 同步更新，概览页显示独立端口与端口用途。
+  - 验证：本地测试集增加 `tests/nodes.sh`，`manage.sh check` 全套（Shell、Docs、JSON、JS、i18n、Routing、Firewall、Nodes）通过。已部署至实机 `192.168.6.1`，部署前备份位于 `/root/stargate-deploy-20260921-235021/backup-files.tar.gz`；实机验证 `node-next-ports`、`node-list`、`check`、`status`、Lua 语法及 Baidu (HTTP 200) / Google (HTTP 204) 探测均正常。
 
 ## 2026-09-14 更新
 
@@ -81,6 +100,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - 节点和入站端口在后端统一校验为 `1..65535`；AnyTLS URI 的密码、SNI 和标签按 URI 百分号编码解码，字面量 `+` 不会被错误转换为空格。
 - DNS 页使用预设下拉加自定义兜底：直连 TCP DNS + 代理域名 DoH；模式决定默认解析器。IPv4/IPv6 DNS 同时接管，用户覆盖优先，基础 proxy 优先于 direct，本地域名交回 dnsmasq。详见架构中的 DNS 策略。
 - Advanced 页提供“转发配置”，会自动优先使用 nftables，缺失时回退 iptables，并提供能力检测、应用透明代理转发和清理 Stargate 转发；工具只管理 Stargate 自己的规则，不修改 PassWall2/OpenClash 规则。某些固件可能只有 iptables 或缺少 `kmod-nft-*`，此时会自动回退。
+- Stargate 透明转发会只读检测 PassWall2、PassWall、OpenClash 等已启用或运行状态；默认发现冲突即拒绝应用，除非操作者明确设置 `safety.allow_proxy_conflict=1` 或临时环境变量 `STARGATE_ALLOW_PROXY_CONFLICT=1`。
 - Rules 页改为 Loyalsoldier clash-rules + sing-box GeoIP rule-set 基础规则体系，不随包内置规则数据，也不内置去广告规则。用户需要显式更新规则，后端将 `direct/private/cncidr/lancidr` 合成为直连域名/CIDR rule-set，将 `proxy/gfw/tld-not-cn/telegramcidr` 合成为代理域名/CIDR rule-set，并额外下载 MetaCubeX 的 `geoip-cn/google/facebook/twitter/telegram` `.srs` 供裸 IP 分流使用；页面只暴露黑名单/白名单模式和少量用户覆盖规则，默认出站与代理出站由模式自动决定。
 - 黑名单模式保持“命中 Proxy 才代理，命中 Direct 或未命中则直连”。透明代理不会因为目标是 TCP/443 就默认代理；HTTPS 代理判断依赖 DNS 劫持带来的域名、TLS/HTTP sniff、基础域名规则和 GeoIP rule-set 命中。用户手写直连仍最高优先级；上游基础规则同时命中 direct 和 proxy 时，proxy 优先，避免 `gstatic.com`、`gvt1.com` 等 Google 相关域名被直连规则提前截走。域名规则未命中时，会先用直连 DNS 解析一次，再用 GeoIP rule-set 对解析出的地址复判，避免 Google/Meta 等裸 IP 被落到默认直连。
 - Rules 页提供域名/IP 策略测试。域名结果明确不包含目标 IP 复判或真实连接验证；未命中域名规则时返回需要解析，不把兜底猜测显示成已验证结果。
@@ -143,4 +163,4 @@ curl --socks5-hostname 127.0.0.1:10808 https://www.cloudflare.com/cdn-cgi/trace
 
 近期优先对照 `third_party/anytls-go` 的 `zji-dev` 实现梳理 AnyTLS 节点导入、连接稳定性、诊断和恢复体验，结合实际节点确定改进项并逐项验证。
 
-NetBird 待办保留：按 [NetBird 出口设计](reference/netbird-exit-node.md) 配置测试组、默认路由和专用 DNS；先由远端测试客户端手动选择 S20M，验证入口权限、出口分流、IPv6/QUIC、私网互通及重连后行为，再决定是否扩大启用范围。
+NetBird 待办保留：按 [NetBird 出口设计](reference/netbird-exit-node.md) 配置测试组、默认路由和专用 DNS；先由远端测试客户端手动选择 S20M，验证入口权限、出口分流、IPv6/QUIC、私网互通及重连后行为，再决定是否扩大启用范围。PassWall2 等其他透明代理仍在运行时，Stargate 透明转发应被拒绝。

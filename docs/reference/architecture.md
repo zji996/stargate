@@ -75,12 +75,14 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 LuCI 版后端还提供两个显式启动动作：
 
 - `start`：设置为本机代理模式，只生成 SOCKS/HTTP 入站并重启 Stargate。
-- `start-transparent redirect [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 入站并重启 Stargate，默认端口是 `12345`。当前防火墙后端不支持 TProxy，运行态入口会提前拒绝该模式。
+- `start-transparent redirect [port]`：设置为透明代理入站模式，生成 sing-box `redirect` 入站并重启 Stargate，默认端口是 `12345`。当前防火墙后端不支持 TProxy，运行态入口会提前拒绝该模式。应用透明转发前会拒绝与 PassWall2、PassWall、OpenClash 等已启用或运行的透明代理共存，除非操作者显式放行。
 - `apply-runtime`：按当前 UCI 期望同步运行态。`global.enabled=0` 会停止服务、禁用 init 自启并清理 Stargate 防火墙规则；`global.enabled=1` 会根据 `inbound.transparent_proxy` 选择本机代理或透明代理启动路径。
 
 这两个动作都会先生成、校验并应用配置；服务重启失败时会恢复上一份备份配置。透明代理动作会尝试应用 Stargate 自己的防火墙规则；规则失败时会清理并回滚透明代理 UCI 状态。Stargate 不修改 dnsmasq 或 DHCP。
 
 LuCI Overview 的保存动作和 init 脚本 reload 都走 `apply-runtime`，init 启动时也会先读取 `global.enabled`。这保证页面勾选状态、服务运行状态和开机自启状态一致，避免只保存 UCI 但运行中的 sing-box 或透明代理规则没有被撤销。
+
+Stargate 的 procd 实例显式设置 `nofile=1000000`，与设备自带 sing-box init 的限额保持一致。透明代理连接会同时占用入站、出站和 splice 管道描述符；防火墙入口保护仍是首要防线，高限额只用于承受正常并发，不能替代环路阻断。
 
 Advanced 页的“转发配置”负责防火墙规则应用和清理。后端自动选择：优先使用 nftables，缺失时回退 iptables。当前规则只管理 Stargate 自己的链或表，便于状态检查和清理。
 
@@ -118,13 +120,32 @@ Stargate 不修改 dnsmasq 上游、DHCP 或 RA。本地域名固定交回 dnsma
 
 规则来自 Loyalsoldier clash-rules 和 MetaCubeX GeoIP `.srs`：direct/private/cncidr/lancidr 合成 `direct.json/.srs`；proxy/gfw/tld-not-cn/telegramcidr 合成 `proxy.json/.srs`；另加载 CN、Google、Facebook、Twitter、Telegram GeoIP 数据。更新为显式操作，先在临时目录下载和编译完整文件，再安装并同步运行态；不从 `third_party/` 加载，不提供离线伪造数据。
 
+### 多出口与独立入站端口设计
+
+Stargate 支持多出口分流：主节点承载透明代理与默认本地入站，辅助节点可配置独立代理入站端口（如专属 SOCKS/HTTP 端口），默认监听 `0.0.0.0` 供局域网设备使用。
+
+核心分流原则为：“直连规则全局共用，代理规则按入站映射到对应出口”。
+1. 全局直连：私网 IP、局域网域名（`.lan` 等）、用户直连域名与 IP、基础 direct 规则集（Loyalsoldier direct + geoip-cn）无论来自哪个入站端口，统统直连 `direct`。
+2. 代理流量按入站导流：当流量判定需要代理时（命中 proxy 规则集、海外 GeoIP 或用户代理域名/IP），带有辅助节点标签的入站流量流向对应节点出站（如 `out-node-<id>`），主入口流量流向主节点 `anytls-out`。
+3. 二次判定与兜底：未命中域名的 IP 二次解析后同样按入站区分出口；白名单/全局代理模式下的兜底路由也按来源入站绑定到对应节点。
+
+实现边界：
+
+- 只有 `enable_port=1` 的命名 `node_item` 参与；匿名 section 被跳过。入站 tag 为 `in-socks-<id>` / `in-http-<id>`。
+- 与当前节点 server/port/password 完全相同的节点不生成第二个出站，其入站直接由主规则覆盖并使用 `anytls-out`，避免对同一服务器维持两套 AnyTLS 会话池。
+- `global_proxy` 模式下辅助端口的全部流量（含国内）走对应节点；`direct` 模式仍开放端口但全部直连。四种模式下 DNS 规则共享，不按入站区分。
+- 独立端口在节点添加/编辑时即拒绝与主 SOCKS/HTTP、透明代理端口、DNS 劫持端口和其他节点独立端口冲突；监听地址必须是 IPv4/IPv6 字面量。生成配置时再次校验。
+- Stargate 不为独立端口增加防火墙规则。`0.0.0.0` 会同时绑定 WAN，依赖 fw4 默认 WAN 入站 REJECT；表单中给出提示。局域网访问路由器私网地址不会被透明代理 REDIRECT 抓走。
+- 与系统服务（53/80/443/22 等）的端口冲突不在此处检查，sing-box 启动失败时走既有回滚路径。
+
 黑名单/白名单的路由顺序：
 
 1. DNS 劫持、sniff、QUIC 拒绝及私网直连；本地域名先用 `lan-dns` 解析再直连。
-2. 用户直连域名、用户直连 IP、用户代理域名、用户代理 IP。
-3. 内置代理 CIDR 补充、基础 proxy、GeoIP proxy、基础 direct、GeoIP direct。
-4. 尚未命中时按模式 DNS 兜底解析一次，再检查私网、用户 IP 与基础/GeoIP IP 规则。内置 CIDR 补充也参与解析后的复判。
-5. 黑名单未命中直连，白名单未命中走 AnyTLS。全局代理/仅直连跳过用户覆盖与基础规则，仅保留本地/私网及协议处理规则。
+2. 用户直连域名、用户直连 IP。
+3. 按入站区分的用户代理域名、用户代理 IP，以及主入站的用户代理规则。
+4. 内置代理 CIDR 补充、基础 proxy、GeoIP proxy（按入站区分导出到对应辅助出站，最后回退主出站）；基础 direct、GeoIP direct 全局直连。
+5. 尚未命中时按模式 DNS 兜底解析一次，再检查私网、用户 IP 与基础/GeoIP IP 规则（同样按入站导出）。
+6. 黑名单未命中直连，白名单未命中按入站走对应节点或 AnyTLS。全局代理/仅直连跳过用户覆盖与基础规则，仅保留本地/私网及协议处理规则。
 
 IP 规则只能检查当时已知的目标 IP；DNS 使用域名策略，不能提前评估尚未解析出的 IP。Rules 测试明确区分域名策略和实际连接：域名输入不验证目标 IP、sniff 和连通性；没有域名命中时返回“需要解析”，不假装已经完成 GeoIP 复判。
 
@@ -135,7 +156,7 @@ IP 规则只能检查当时已知的目标 IP；DNS 使用域名策略，不能�
 nftables 表 `inet stargate` 先完整预检，再在一个事务内替换：
 
 - NAT PREROUTING `-110`：先处理 NetBird 其他私网目标绕过，再做 IPv4/IPv6 DNS、私网/保留地址绕过，最后接管公网 IPv4 TCP。
-- filter PREROUTING `-10`：DNS 已经 DNAT，保留回复流量、本机 INPUT、NetBird 私网与本地 IPv6；拒绝受管公网 IPv6，按开关拒绝 UDP/443。
+- filter PREROUTING `-10`：DNS 已经 DNAT；只允许带 DNAT 状态的连接进入透明端口，直接访问该端口会被拒绝，防止 redirect 入站把自身端口当成原目标并形成递归连接；随后保留回复流量、本机 INPUT、NetBird 私网与本地 IPv6，拒绝受管公网 IPv6，并按开关拒绝 UDP/443。
 
 guard 不放在 FORWARD，避免 NetBird 自动插入的放行规则抢先结束检查。也不能将 filter guard 插在多个 NAT 优先级之间：S20M 实测这时可能先看到未 DNAT 的公网 IPv6 DNS 并误拒绝，所以 guard 放在所有常规 DNAT hook 之后的 -10。S20M 的内核/nft 已验证 PREROUTING reject；其他固件必须通过本机 nft 预检后应用，不支持时保留旧表。Stargate 不增加其他服务的 INPUT/FORWARD 授权。
 

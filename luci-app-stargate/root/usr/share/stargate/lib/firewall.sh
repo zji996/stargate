@@ -339,6 +339,8 @@ $direct_ip_return
   chain guard {
     type filter hook prerouting priority filter - 10; policy accept;
     ct direction reply counter return comment "Stargate reply bypass"
+    iifname { $iface_set } meta nfproto ipv4 tcp dport $transparent_port ct status dnat counter return comment "Stargate transparent redirected input"
+    iifname { $iface_set } meta nfproto ipv4 tcp dport $transparent_port counter reject comment "Stargate transparent input guard"
     fib daddr type local counter return comment "Stargate local input"
     iifname "$netbird_interface" ip daddr { 10.0.0.0/8, 100.64.0.0/10, 172.16.0.0/12, 192.168.0.0/16 } counter return comment "Stargate overlay private bypass"
     iifname { $iface_set } ip6 daddr { ::1/128, fc00::/7, fe80::/10, ff00::/8 } counter return comment "Stargate local IPv6"
@@ -379,6 +381,44 @@ firewall_backend() {
   fi
 }
 
+firewall_conflicting_proxy() {
+  for svc in passwall2 passwall openclash; do
+    [ -x "/etc/init.d/$svc" ] || continue
+    if "/etc/init.d/$svc" enabled >/dev/null 2>&1; then
+      printf '%s enabled' "$svc"
+      return 0
+    fi
+  done
+  if [ "$(uci -q get passwall2.@global[0].enabled 2>/dev/null || true)" = "1" ]; then
+    printf 'passwall2 enabled'
+    return 0
+  fi
+  if [ "$(uci -q get passwall.@global[0].enabled 2>/dev/null || true)" = "1" ]; then
+    printf 'passwall enabled'
+    return 0
+  fi
+  if [ "$(uci -q get openclash.config.enable 2>/dev/null || true)" = "1" ]; then
+    printf 'openclash enabled'
+    return 0
+  fi
+  if ps w 2>/dev/null | grep -E '/tmp/etc/passwall2|/usr/share/passwall2|/tmp/etc/passwall|/usr/share/passwall|openclash|mihomo|clash' | grep -v grep >/dev/null; then
+    printf 'another proxy process running'
+    return 0
+  fi
+  return 1
+}
+
+firewall_proxy_conflict_allowed() {
+  [ "${STARGATE_ALLOW_PROXY_CONFLICT:-0}" = "1" ] || [ "${allow_proxy_conflict:-0}" = "1" ]
+}
+
+firewall_require_no_proxy_conflict() {
+  firewall_proxy_conflict_allowed && return 0
+  conflict="$(firewall_conflicting_proxy)" || return 0
+  echo "refusing to apply Stargate transparent forwarding: $conflict; stop the other proxy first or set safety.allow_proxy_conflict=1 deliberately" >&2
+  return 1
+}
+
 firewall_apply_rules() {
   load_config
   if [ "$transparent_proxy" != "1" ]; then
@@ -386,6 +426,7 @@ firewall_apply_rules() {
     echo "firewall cleaned; transparent proxy is disabled"
     return 0
   fi
+  firewall_require_no_proxy_conflict || return 1
   validate_config
   backend="$(firewall_backend)"
   case "$backend" in
@@ -404,6 +445,7 @@ firewall_apply() {
     echo "firewall cleaned; transparent proxy is disabled"
     return 0
   fi
+  firewall_require_no_proxy_conflict || return 1
   validate_config
   apply_config
   restart_service_with_rollback
@@ -457,6 +499,11 @@ firewall_status_text() {
   printf 'IPv6 guard: %s\n' "$ipv6_guard"
   printf 'LAN IPv6 policy: %s\n' "$lan_ipv6_policy"
   printf 'LAN IPv6 state: %s\n' "$(firewall_lan_ipv6_status)"
+  if conflict="$(firewall_conflicting_proxy)"; then
+    printf 'Proxy conflict: %s\n' "$conflict"
+  else
+    printf 'Proxy conflict: no\n'
+  fi
   if [ "$backend" = "nft" ] && [ "$active" = "yes" ]; then
     printf 'Rule packets: DNS=%s transparent=%s direct-bypass=%s\n' \
       "$(firewall_nft_rule_packets "Stargate DNS redirect")" \
@@ -481,6 +528,11 @@ firewall_status_json() {
     ipv6_guard=true
   fi
   lan_ifaces="$(firewall_lan_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
+  if conflict="$(firewall_conflicting_proxy)"; then
+    proxy_conflict="$conflict"
+  else
+    proxy_conflict="no"
+  fi
   lan_ipv6_state="$(firewall_lan_ipv6_status)"
   dns_packets=0
   transparent_packets=0
@@ -491,6 +543,6 @@ firewall_status_json() {
     direct_bypass_packets="$(firewall_nft_rule_packets "Stargate direct bypass")"
   fi
   managed_ifaces="$(firewall_managed_ifaces | tr '\n' ' ' | sed 's/[[:space:]]*$//')"
-  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Managed interfaces: $managed_ifaces; NetBird proxy: $netbird_proxy ($netbird_interface); Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; Rule packets: DNS=$dns_packets transparent=$transparent_packets direct-bypass=$direct_bypass_packets; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state"
-  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","dns_packets":%s,"transparent_packets":%s,"direct_bypass_packets":%s,"message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$dns_packets" "$transparent_packets" "$direct_bypass_packets" "$(printf '%s' "$message" | json_escape)"
+  message="Backend: $backend; Active: $active; LAN interfaces: $lan_ifaces; Managed interfaces: $managed_ifaces; NetBird proxy: $netbird_proxy ($netbird_interface); Transparent: $transparent_proxy $transparent_mode:$transparent_port; DNS redirect: $dns_hijack:$dns_hijack_port; Rule packets: DNS=$dns_packets transparent=$transparent_packets direct-bypass=$direct_bypass_packets; QUIC block: $rules_block_quic; IPv6 guard: $ipv6_guard; LAN IPv6 policy: $lan_ipv6_policy; LAN IPv6 state: $lan_ipv6_state; Proxy conflict: $proxy_conflict"
+  printf '{"backend":"%s","active":%s,"ipv6_guard":%s,"lan_ipv6_policy":"%s","dns_packets":%s,"transparent_packets":%s,"direct_bypass_packets":%s,"proxy_conflict":"%s","message":"%s"}' "$backend" "$active" "$ipv6_guard" "$(printf '%s' "$lan_ipv6_policy" | json_escape)" "$dns_packets" "$transparent_packets" "$direct_bypass_packets" "$(printf '%s' "$proxy_conflict" | json_escape)" "$(printf '%s' "$message" | json_escape)"
 }

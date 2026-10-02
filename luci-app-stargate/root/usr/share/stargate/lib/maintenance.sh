@@ -175,6 +175,7 @@ config rules 'rules'
 
 config safety 'safety'
 	option backup_on_apply '1'
+	option allow_proxy_conflict '0'
 	option lan_ipv6_policy 'keep'
 EOF
   rm -f /etc/stargate/config.json.next
