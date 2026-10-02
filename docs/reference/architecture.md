@@ -16,7 +16,8 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - 可解释：配置文件、脚本状态和前端展示的信息要能对应到真实 sing-box 配置。
 - AI 友好：核心状态和配置使用稳定路径与结构化 JSON，便于 AI 辅助生成、检查和修复。
 - 阶段推进：第一阶段只做 AnyTLS、SOCKS、HTTP、内部 DNS、状态检查和回滚；后续再扩展 DNS 接管、透明代理、分流、订阅和前端。
-- 经验复用：可以参考 PassWall2 和 sing-box 上游实现，但不能让 Stargate 的运行时依赖参考仓库。
+- 经验复用：可以参考 PassWall2、sing-box 和 anytls-go 实现，但不能让 Stargate 的运行时依赖参考仓库。
+- 协议重点：AnyTLS 是当前实际使用的代理协议，优先完善节点导入、连接稳定性、诊断和恢复体验，多协议扩展留待后续评估。
 
 ## 第一阶段
 
@@ -42,6 +43,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - `docs/reference/`：当前真实架构、LuCI 平台、实机部署经验和命名边界。
 - `third_party/openwrt-passwall2`：PassWall2 参考仓库，只读参考。
 - `third_party/sing-box`：sing-box `dev-next` 参考仓库，只读参考。
+- `third_party/anytls-go`：`zji996/anytls-go` 的 `zji-dev` 分支，只读参考实际使用的 AnyTLS 协议实现；不增加第二个受管核心。
 
 `third_party/` 不参与构建、安装、发布和运行，Stargate 代码不允许直接引用其中内容。
 

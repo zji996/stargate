@@ -2,7 +2,13 @@
 
 ## 当前目标
 
-IPv6 DNS 与分流优先级修复已部署；下一步按出口设计发布仅供测试客户端选择的 NetBird exit node，并完成远端验收。保持其他路由器和组网服务边界。
+优先打磨当前实际使用的 AnyTLS 协议体验，覆盖节点导入、连接稳定性、诊断和恢复。IPv6 DNS 与分流优先级修复已部署；NetBird exit node 发布和远端验收仍待完成，保持其他路由器和组网服务边界。
+
+## 2026-10-02 更新
+
+- 用户确认近期主要打磨实际使用的 AnyTLS 代理协议体验，多协议扩展不作为当前重点。
+- 新增 `third_party/anytls-go` 参考 submodule，来源为 `https://github.com/zji996/anytls-go.git`，跟踪 `zji-dev`，当前固定提交为 `4fd4b878c12df9e2de7cae5dc14f7315107f87fe`。
+- anytls-go 仅供协议实现和客户端/服务端行为对照，不参与 Stargate 构建、安装或运行；受管核心仍只有 sing-box。
 
 ## 2026-09-14 更新
 
@@ -56,7 +62,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是参考 
 - LuCI 页面源码默认英文，`po/zh-cn/stargate.po` 提供简体中文翻译，跟随 OpenWrt LuCI 语言切换。
 - `configure` 交互式读取 AnyTLS URI，生成 `/etc/stargate/config.json`。
 - `/etc/init.d/stargate` 使用 procd 启动 `/usr/bin/sing-box run -c /etc/stargate/config.json`。
-- `third_party/openwrt-passwall2` 和 `third_party/sing-box` 已作为 submodule 添加，仅供参考。
+- `third_party/openwrt-passwall2`、`third_party/sing-box` 和 `third_party/anytls-go` 已作为 submodule 添加，仅供参考。
 - 默认监听：
   - SOCKS: `127.0.0.1:10808`
   - HTTP: `127.0.0.1:10809`
@@ -135,4 +141,6 @@ curl --socks5-hostname 127.0.0.1:10808 https://www.cloudflare.com/cdn-cgi/trace
 
 ## 下一步
 
-下一步按 [NetBird 出口设计](reference/netbird-exit-node.md) 配置测试组、默认路由和专用 DNS；先由远端测试客户端手动选择 S20M，验证入口权限、出口分流、IPv6/QUIC、私网互通及重连后行为，再决定是否扩大启用范围。
+近期优先对照 `third_party/anytls-go` 的 `zji-dev` 实现梳理 AnyTLS 节点导入、连接稳定性、诊断和恢复体验，结合实际节点确定改进项并逐项验证。
+
+NetBird 待办保留：按 [NetBird 出口设计](reference/netbird-exit-node.md) 配置测试组、默认路由和专用 DNS；先由远端测试客户端手动选择 S20M，验证入口权限、出口分流、IPv6/QUIC、私网互通及重连后行为，再决定是否扩大启用范围。

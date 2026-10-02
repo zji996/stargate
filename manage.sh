@@ -67,7 +67,8 @@ check_docs() {
   done
   for dir in \
     third_party/openwrt-passwall2 \
-    third_party/sing-box
+    third_party/sing-box \
+    third_party/anytls-go
   do
     if [ ! -d "$dir" ]; then
       echo "missing: $dir" >&2

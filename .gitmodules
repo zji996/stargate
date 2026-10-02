@@ -5,3 +5,7 @@
 	path = third_party/sing-box
 	url = https://github.com/zji996/sing-box
 	branch = dev-next
+[submodule "third_party/anytls-go"]
+	path = third_party/anytls-go
+	url = https://github.com/zji996/anytls-go.git
+	branch = zji-dev

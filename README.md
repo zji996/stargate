@@ -7,7 +7,7 @@
 ## 目标
 
 - 以 `sing-box` 为唯一核心，先不做多核心选择。
-- 优先支持 AnyTLS URI，后续扩展更多 sing-box 支持的节点类型。
+- AnyTLS 是当前实际使用的代理协议，优先打磨节点导入、连接稳定性、诊断和恢复体验；更多协议留待后续评估。
 - 配置生成后先执行 `sing-box check`，通过后才切换。
 - 启动失败自动回滚上一份配置。
 - 默认只开启本机 SOCKS/HTTP 入站，不接管全局网络。
@@ -109,6 +109,7 @@ sh manage.sh check
 
 - `third_party/openwrt-passwall2`：参考 OpenWrt 集成、DNS、透明代理、规则和 UI 经验。
 - `third_party/sing-box`：参考 sing-box `dev-next` 的上游配置和实现。
+- `third_party/anytls-go`：参考实际使用的 AnyTLS 协议实现，跟踪 `zji996/anytls-go` 的 `zji-dev` 分支。
 
 Stargate 的代码、构建、安装和运行都不能直接依赖 `third_party/`。
 

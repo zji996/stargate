@@ -12,12 +12,15 @@
 - `docs/reference/naming.md`
 - `third_party/openwrt-passwall2`
 - `third_party/sing-box`
+- `third_party/anytls-go`
 
 ## 项目边界
 
 Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是吸收 PassWall2 在 OpenWrt 集成、DNS、透明代理、规则、服务编排和 UI 体验上的优秀经验，但保持更清晰的结构、更强的可验证性和更保守的默认行为。
 
 第一阶段仍只管理 `sing-box` 一个核心，优先让 AnyTLS 节点以本机 SOCKS/HTTP 代理方式稳定跑通。
+
+AnyTLS 是当前实际使用的代理协议，近期优先打磨它的节点导入、连接稳定性、诊断和恢复体验；多协议扩展不作为当前重点。
 
 默认不要做这些事：
 
@@ -33,6 +36,7 @@ Stargate 是面向 OpenWrt 24 的 sing-box 管理平台。长期目标是吸收 
 
 - `third_party/openwrt-passwall2`：参考 PassWall2 的 OpenWrt 集成、功能边界和交互经验。
 - `third_party/sing-box`：参考 sing-box `dev-next` 的配置、协议和上游实现。
+- `third_party/anytls-go`：参考实际使用的 AnyTLS 协议实现，跟踪 `zji996/anytls-go` 的 `zji-dev` 分支。
 
 硬性规则：
 
