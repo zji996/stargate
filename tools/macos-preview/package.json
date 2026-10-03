@@ -1,0 +1,16 @@
+{
+  "name": "stargate-macos-preview",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Offline design prototype; no native macOS backend",
+  "scripts": {
+    "check": "node --check app.js && node --check verify.cjs",
+    "test": "node verify.cjs"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

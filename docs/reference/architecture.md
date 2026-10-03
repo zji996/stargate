@@ -47,6 +47,12 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 
 `third_party/` 不参与构建、安装、发布和运行，Stargate 代码不允许直接引用其中内容。
 
+## Mac 交互原型
+
+`tools/macos-preview/` 是无需构建、可离线打开的七页 Web 设计原型，只有示例数据与页面内存状态，不参与 OpenWrt 安装或运行。普通代理与固定远程通道分别控制；源码与设计进入版本管理，个人凭据、截图和开发包留在 `.local/`。
+
+当前没有 Mac 原生运行后端，不设置真实系统代理、不读取设备身份、不兑换开通码。系统代理恢复、Keychain、菜单栏和 TUN 的实现路线见 [Mac 应用设计](../../tools/macos-preview/DESIGN.md)，运行与浏览器验证见 [预览说明](../../tools/macos-preview/README.md)。
+
 ## 运行路径
 
 - 配置目录：`/etc/stargate`

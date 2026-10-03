@@ -89,6 +89,8 @@ anytls://password@host:8443/?insecure=1
 
 ## 设计文档
 
+[Mac 七页交互预览](tools/macos-preview/README.md) 与 [完整应用设计](tools/macos-preview/DESIGN.md) 已提供，当前是示例原型，尚无 Mac 原生运行后端。
+
 建议阅读：
 
 - [docs/current.md](docs/current.md)：当前目标、状态、边界和验收方式。

@@ -8,6 +8,7 @@ Usage:
   sh manage.sh check shell
   sh manage.sh check docs
   sh manage.sh check secrets
+  sh manage.sh check macos-preview
 USAGE
 }
 
@@ -97,8 +98,18 @@ check_json() {
   done
 }
 
+check_macos_preview() {
+  if ! command -v node >/dev/null 2>&1; then
+    echo 'macos-preview browser checks require Node.js 20+; see tools/macos-preview/README.md' >&2
+    return 1
+  fi
+  node tools/macos-preview/verify.cjs
+}
+
 check_js() {
   if command -v node >/dev/null 2>&1; then
+    node --check tools/macos-preview/app.js
+    node --check tools/macos-preview/verify.cjs
     node --check luci-app-stargate/htdocs/luci-static/resources/stargate-cbi.js
     node --check luci-app-stargate/htdocs/luci-static/resources/stargate-overview.js
     for file in luci-app-stargate/htdocs/luci-static/resources/view/stargate/*.js; do
@@ -170,6 +181,9 @@ case "$action:$target" in
     ;;
   check:json)
     check_json
+    ;;
+  check:macos-preview)
+    check_macos_preview
     ;;
   check:js)
     check_js
