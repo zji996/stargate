@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Stargate · Mac 应用设计预览</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="window">
+    <aside class="sidebar" aria-label="主导航">
+      <div class="traffic-lights" aria-hidden="true"><i></i><i></i><i></i></div>
+      <a href="#overview" class="brand"><span class="brand-icon">S</span><span>Stargate<small>你的网络，由你掌控</small></span></a>
+      <div class="nav-label">工作空间</div>
+      <nav id="navigation"></nav>
+      <div class="sidebar-bottom"><div class="device"><span class="device-icon">⌘</span><div>我的 Mac<small>个人工作空间</small></div><span class="dot"></span></div><p>交互预览 · 示例数据<br>操作仅在当前页面内生效</p></div>
+    </aside>
+    <div class="workspace">
+      <header class="toolbar"><span id="breadcrumb">工作空间 / 概览</span><div class="toolbar-actions"><span class="preview-badge">设计预览</span><button class="icon-button" id="theme-toggle" aria-label="切换深浅色">◐</button></div></header>
+      <main id="content" tabindex="-1"></main>
+      <footer><span><span class="dot"></span> 当前为界面原型</span><span>没有连接真实节点或修改系统网络</span></footer>
+    </div>
+  </div>
+  <dialog id="modal" aria-labelledby="modal-title"><form id="modal-form"><div class="modal-heading"><h2 id="modal-title"></h2><button type="button" class="icon-button" id="close-modal" aria-label="关闭对话框">×</button></div><div id="modal-body"></div><p id="modal-error" role="alert"></p><div class="modal-actions"><button type="button" class="button" id="cancel-modal">取消</button><button class="button primary" id="modal-submit" type="submit">保存</button></div></form></dialog>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+</body>
+</html>
