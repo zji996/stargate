@@ -59,6 +59,10 @@ config rules 'rules'
 	option custom_direct_ips ''
 	option custom_proxy_ips ''
 
+config dedup 'dedup'
+	option enabled '0'
+	option devices ''
+
 config safety 'safety'
 	option backup_on_apply '1'
 	option allow_proxy_conflict '0'
