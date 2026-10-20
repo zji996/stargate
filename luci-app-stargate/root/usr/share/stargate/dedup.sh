@@ -10,6 +10,7 @@ singbox_bin="/usr/bin/sing-box"
 dedup_bin="/usr/bin/stargate-dedup"
 dedup_ca_dir="$work_dir/dedup"
 dedup_init="/etc/init.d/stargate-dedup"
+stargate_init="/etc/init.d/stargate"
 
 usage() {
   cat <<'USAGE'
@@ -70,13 +71,24 @@ wait_front() {
 # Restart Stargate only if its generated config differs from the running one.
 apply_steering() {
   next="$(generate_config)" || return 1
-  if [ -f "$config_file" ] && cmp -s "$next" "$config_file"; then
+  if [ -f "$config_file" ] && cmp -s "$next" "$config_file" && "$stargate_init" status >/dev/null; then
     rm -f "$next"
     return 0
   fi
   rm -f "$next"
   echo "restarting Stargate with the new routes; proxied connections drop once..."
-  "$script_dir/stargate.sh" apply-runtime >/dev/null
+  routes_touched=1
+  "$script_dir/stargate.sh" apply-runtime >/dev/null || return 1
+  # The runtime helper may successfully roll back to an older config. That
+  # still means this switch failed; never report the requested state as live.
+  steering_matches
+}
+
+steering_matches() {
+  next="$(generate_config)" || return 1
+  if cmp -s "$next" "$config_file"; then matches=1; else matches=0; fi
+  rm -f "$next"
+  [ "$matches" = 1 ] && "$stargate_init" status >/dev/null
 }
 
 save_switch() {
@@ -86,20 +98,89 @@ save_switch() {
   uci_commit
 }
 
+# Remember option absence as well as values, including a missing section.
+# Restore only the fields this CLI writes, leaving other dedup options alone.
+snapshot_switch() {
+  old_section="$(uci_cmd get "$app.dedup" || true)"
+  old_enabled_set=0
+  if old_enabled="$(uci_cmd get "$app.dedup.enabled")"; then old_enabled_set=1; fi
+  old_devices_set=0
+  if old_devices="$(uci_cmd get "$app.dedup.devices")"; then old_devices_set=1; fi
+  old_init_enabled=0
+  "$dedup_init" enabled && old_init_enabled=1
+  old_front_running=0
+  "$dedup_init" status >/dev/null 2>&1 && old_front_running=1
+  routes_touched=0
+  front_touched=0
+}
+
+restore_switch() {
+  if [ -z "$old_section" ]; then
+    if uci_cmd get "$app.dedup" >/dev/null 2>&1; then
+      uci_cmd delete "$app.dedup" || return 1
+    fi
+  else
+    for option in enabled devices; do
+      case "$option" in
+        enabled) value="$old_enabled"; was_set="$old_enabled_set" ;;
+        devices) value="$old_devices"; was_set="$old_devices_set" ;;
+      esac
+      if [ "$was_set" = 1 ]; then
+        uci_cmd set "$app.dedup.$option=$value" || return 1
+      else
+        if uci_cmd get "$app.dedup.$option" >/dev/null 2>&1; then
+          uci_cmd delete "$app.dedup.$option" || return 1
+        fi
+      fi
+    done
+  fi
+  uci_commit || return 1
+  if [ "$front_touched" = 1 ] && [ "$old_front_running" = 1 ]; then
+    "$dedup_init" start || return 1
+    dedup_port="$(uci_get dedup port 10860)"
+    wait_front || return 1
+  fi
+  # Reapply unconditionally: a failed restart can leave the old file in place
+  # while its process or firewall is down. A byte comparison cannot detect it.
+  if [ "$routes_touched" = 1 ]; then
+    "$script_dir/stargate.sh" apply-runtime >/dev/null || return 1
+    steering_matches || return 1
+  fi
+  # Keep a front alive if routes could not be restored.
+  if [ "$front_touched" = 1 ] && [ "$old_front_running" = 0 ]; then
+    "$dedup_init" stop || return 1
+  fi
+  if [ "$old_init_enabled" = 1 ]; then
+    "$dedup_init" enable
+  else
+    "$dedup_init" disable
+  fi
+}
+
+switch_transaction() (
+  snapshot_switch
+  trap 'rc=$?; trap - EXIT; if [ "$rc" != 0 ]; then
+    if restore_switch; then
+      echo "dedup switch failed; previous settings and runtime restored" >&2
+    else
+      echo "dedup switch failed; recovery incomplete, check Stargate and dedup status" >&2
+    fi
+  fi; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  "$@"
+)
+
 dedup_on() {
   [ "$(bool_value "$(uci_get global enabled 0)")" = 1 ] || die "Stargate is not running; start it first"
   [ -x "$dedup_bin" ] || die "dedup front missing: $dedup_bin (build it with tools/dedup/build.sh)"
-  old_enabled="$(uci_get dedup enabled 0)"
-  old_devices="$(uci_get dedup devices '')"
   devices="${*:-$old_devices}"
   [ -n "$devices" ] || die "which devices? e.g. dedup.sh on 10.0.0.12"
   [ "$(uci_get rules mode blacklist)" != direct ] || die "direct mode sends nothing to a node; nothing to deduplicate"
 
   save_switch 1 "$devices"
-  if ! (load_front_config); then
-    save_switch "$old_enabled" "$old_devices"
-    exit 1
-  fi
+  (load_front_config) || return 1
   load_front_config
   if [ ! -f "$dedup_ca_dir/ca.pem" ]; then
     mkdir -p "$dedup_ca_dir"
@@ -109,18 +190,14 @@ dedup_on() {
   fi
 
   echo "starting the dedup front..."
+  front_touched=1
   "$dedup_init" enable
   if ! "$dedup_init" start || ! wait_front; then
-    save_switch "$old_enabled" "$old_devices"
-    "$dedup_init" stop || true
     logread -e stargate-dedup 2>/dev/null | tail -n 5 >&2 || true
-    die "the dedup front did not start; nothing changed"
+    die "the dedup front did not start"
   fi
   if ! apply_steering; then
-    save_switch "$old_enabled" "$old_devices"
-    apply_steering || true
-    [ "$old_enabled" = 1 ] || "$dedup_init" stop || true
-    die "Stargate did not take the new routes; dedup is back as it was"
+    die "Stargate did not take the new routes"
   fi
   echo "dedup on for $devices"
   if [ "${new_ca:-0}" = 1 ]; then
@@ -131,7 +208,9 @@ dedup_on() {
 dedup_off() {
   save_switch 0 "$(uci_get dedup devices '')"
   [ "$(bool_value "$(uci_get global enabled 0)")" != 1 ] || apply_steering
-  "$dedup_init" stop || true
+  front_touched=1
+  "$dedup_init" stop
+  "$dedup_init" disable
   echo "dedup off"
 }
 
@@ -156,8 +235,8 @@ dedup_status() {
 action="${1:-}"
 [ "$#" -eq 0 ] || shift
 case "$action" in
-  on) dedup_on "$@" ;;
-  off) dedup_off ;;
+  on) switch_transaction dedup_on "$@" ;;
+  off) switch_transaction dedup_off ;;
   status) dedup_status ;;
   ca) cat "$dedup_ca_dir/ca.pem" ;;
   front) print_front ;;
