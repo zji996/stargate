@@ -18,6 +18,7 @@ check_shell() {
   sh -n manage.sh
   sh -n luci-app-stargate/root/usr/share/stargate/stargate.sh
   sh -n luci-app-stargate/root/etc/init.d/stargate
+  sh -n luci-app-stargate/root/etc/init.d/stargate-dedup
   for file in luci-app-stargate/root/usr/share/stargate/lib/*.sh; do
     sh -n "$file"
   done

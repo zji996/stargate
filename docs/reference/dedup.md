@@ -113,7 +113,7 @@ WSL 系统 DNS 经 Windows 隧道返回过错误地址；直接查询路由器�
 - 启用后约 2 分钟真实 Sub2API 流量：原文 `118234725` 字节、帧计数 `52690640` 字节，ratio 2.24，23 帧，`fallbacks`、`resets`、`misdelivered` 均为 0。帧计数不含 TLS/AnyTLS 开销。
 - 前端 cgroup 内存约 208 MiB / 300 MiB，OOM 为 0；需要继续观察高负载下是否逼近上限。
 
-已知问题：参数或二进制变化时新旧前端在同一 cgroup 内交接，上限仍是单个 `memory_mib`；新前端冷启动时字面量帧大，2026-10-22 实际被 cgroup OOM 杀掉一次（procd 1 秒拉起，在途请求断开）。
+交接内存：参数或二进制变化时新旧前端在同一 cgroup 内交接。2026-10-22 升级时上限仍是单个 `memory_mib`，新前端冷启动（字面量帧大）被 cgroup OOM 杀掉一次，procd 1 秒拉起，在途请求断开。之后 init 脚本在交接时把上限临时提高到 `memory_mib` 加旧前端当前用量（以系统可用内存减 64 MiB 为限，且不低于 `memory_mib`），旧前端退出后恢复；期间若又有交接，旧的恢复不再生效。`tests/dedup-init.sh` 覆盖这些情况。该修复尚未部署到 8.1，按用户要求等下次必要更新时随 `upgrade.sh` 一并下发（脚本已包含 init 脚本）。
 
 升级前端并调整解码端大小用 `tools/dedup/upgrade.sh --router root@路由器 --server root@出口`：默认只预检并在路由器 `/tmp` 暂存校验（随后删除），`--apply` 先重启解码端再并行切换前端，两边缓存只冷启动一次，不重启 sing-box 与 anytls-server，失败按备份回滚。
 

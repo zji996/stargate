@@ -7,6 +7,10 @@ STOP=21
 USE_PROCD=1
 
 cgroup_root="/sys/fs/cgroup"
+meminfo="/proc/meminfo"
+dedup_cli="/usr/share/stargate/dedup.sh"
+instance_file="/var/run/stargate-dedup.instance"
+front_pattern="^/usr/bin/stargate-dedup front"
 
 # procd runs each instance in a child of services/stargate-dedup, so a limit
 # there also covers an old front still draining; past it the kernel kills a
@@ -14,22 +18,64 @@ cgroup_root="/sys/fs/cgroup"
 limit_memory() {
   grep -qw memory "$cgroup_root/cgroup.controllers" 2>/dev/null || {
     echo "stargate-dedup: no memory cgroup, only the fronts' soft limits apply" >&2
-    return 0
+    return 1
   }
   for dir in "$cgroup_root" "$cgroup_root/services"; do
     mkdir -p "$dir"
     grep -qw memory "$dir/cgroup.subtree_control" ||
-      echo +memory >"$dir/cgroup.subtree_control" || return 0
+      echo +memory >"$dir/cgroup.subtree_control" || return 1
   done
   mkdir -p "$cgroup_root/services/stargate-dedup"
   echo "$1" >"$cgroup_root/services/stargate-dedup/memory.max"
 }
 
+# While a changed front starts next to the old one, which keeps its memory
+# until it has drained, the limit makes room for both: the old front's use on
+# top of the usual limit, as far as free memory allows with 64 MiB to spare.
+handover_max() { # limit used available, in bytes
+  hm_max=$(($1 + $2))
+  hm_room=$(($2 + $3 - (64 << 20)))
+  [ "$hm_max" -le "$hm_room" ] || hm_max=$hm_room
+  [ "$hm_max" -ge "$1" ] || hm_max=$1
+  echo "$hm_max"
+}
+
+# Back to the usual limit once the old fronts have exited, unless another
+# handover has started meanwhile.
+restore_limit() { # limit instance pids...
+  rl_limit=$1 rl_instance=$2
+  shift 2
+  for _ in $(seq 60); do
+    rl_alive=0
+    for rl_pid in "$@"; do
+      kill -0 "$rl_pid" 2>/dev/null && rl_alive=1
+    done
+    [ "$rl_alive" = 0 ] && break
+    sleep 1
+  done
+  [ "$(cat "$instance_file" 2>/dev/null)" = "$rl_instance" ] || return 0
+  echo "$rl_limit" >"$cgroup_root/services/stargate-dedup/memory.max"
+}
+
 start_service() {
-  front="$(/usr/share/stargate/dedup.sh front)" || return 1
+  front="$("$dedup_cli" front)" || return 1
   [ -n "$front" ] || return 0
-  limit_memory "$(uci -q get stargate.dedup.memory_mib || echo 300)M"
-  procd_open_instance "${front%% *}"
+  instance="${front%% *}"
+  limit=$(($(uci -q get stargate.dedup.memory_mib || echo 300) << 20))
+  old=""
+  [ "$(cat "$instance_file" 2>/dev/null)" = "$instance" ] || old="$(pgrep -f "$front_pattern")"
+  target=$limit
+  if [ -n "$old" ] && [ -r "$cgroup_root/services/stargate-dedup/memory.current" ]; then
+    used=$(cat "$cgroup_root/services/stargate-dedup/memory.current")
+    available=$(($(awk '/^MemAvailable:/ {print $2}' "$meminfo") << 10))
+    target=$(handover_max "$limit" "$used" "$available")
+  fi
+  if limit_memory "$target" && [ "$target" != "$limit" ]; then
+    # shellcheck disable=SC2086
+    (restore_limit "$limit" "$instance" $old) </dev/null >/dev/null 2>&1 &
+  fi
+  echo "$instance" >"$instance_file"
+  procd_open_instance "$instance"
   # shellcheck disable=SC2086
   procd_set_param command /usr/bin/stargate-dedup ${front#* }
   procd_set_param respawn 3600 1 0

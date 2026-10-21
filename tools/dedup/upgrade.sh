@@ -57,7 +57,7 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 on_router() { ssh $ssh_opts "$router" "$@"; }
 on_server() { ssh $ssh_opts "$server" "$@"; }
 
-root_files="usr/share/stargate/dedup.sh usr/share/stargate/lib/config.sh"
+root_files="usr/share/stargate/dedup.sh usr/share/stargate/lib/config.sh etc/init.d/stargate-dedup"
 stage=/tmp/stargate-dedup-stage
 mode=$([ "$apply" = 1 ] && echo APPLY || echo DRY-RUN)
 echo "dedup upgrade ($mode): router $router, server $server"
@@ -102,7 +102,7 @@ done
 # Files this upgrade does not ship must already match, or they may not fit.
 for f in usr/share/stargate/stargate.sh usr/share/stargate/lib/common.sh usr/share/stargate/lib/rules.sh \
   usr/share/stargate/lib/firewall.sh usr/share/stargate/lib/nodes.sh usr/share/stargate/lib/service.sh \
-  usr/share/stargate/lib/maintenance.sh etc/init.d/stargate-dedup; do
+  usr/share/stargate/lib/maintenance.sh; do
   [ "$(on_router "md5sum /$f | cut -d' ' -f1")" = "$(md5sum <"$repo/luci-app-stargate/root/$f" | cut -d' ' -f1)" ] ||
     die "/$f on the router differs from this repository; deploy it first"
 done
@@ -112,12 +112,14 @@ on_router "rm -rf $stage && mkdir -p $stage/lib"
 on_router "cat > $stage/stargate-dedup && chmod 755 $stage/stargate-dedup" <"$bin"
 on_router "cat > $stage/dedup.sh" <"$repo/luci-app-stargate/root/usr/share/stargate/dedup.sh"
 on_router "cat > $stage/lib/config.sh" <"$repo/luci-app-stargate/root/usr/share/stargate/lib/config.sh"
+on_router "cat > $stage/stargate-dedup.init" <"$repo/luci-app-stargate/root/etc/init.d/stargate-dedup"
 for pair in "stargate-dedup:$bin" "dedup.sh:$repo/luci-app-stargate/root/usr/share/stargate/dedup.sh" \
-  "lib/config.sh:$repo/luci-app-stargate/root/usr/share/stargate/lib/config.sh"; do
+  "lib/config.sh:$repo/luci-app-stargate/root/usr/share/stargate/lib/config.sh" \
+  "stargate-dedup.init:$repo/luci-app-stargate/root/etc/init.d/stargate-dedup"; do
   [ "$(on_router "sha256sum $stage/${pair%%:*} | cut -d' ' -f1")" = "$(sha256sum <"${pair#*:}" | cut -d' ' -f1)" ] ||
     die "staged ${pair%%:*} does not match"
 done
-on_router "sh -n $stage/dedup.sh && sh -n $stage/lib/config.sh && $stage/stargate-dedup front -h 2>&1 | grep -q inflight-wait" ||
+on_router "sh -n $stage/dedup.sh && sh -n $stage/lib/config.sh && sh -n $stage/stargate-dedup.init && $stage/stargate-dedup front -h 2>&1 | grep -q inflight-wait" ||
   die "staged files do not run on the router"
 say "staged and verified: checksums, shell syntax, binary runs on $arch"
 
@@ -205,7 +207,7 @@ ts=$1 index=$2 stage=$3
 backup=/root/stargate-dedup-upgrade-$ts
 mkdir -p "$backup"
 (cd / && tar czf "$backup/backup.tar.gz" usr/bin/stargate-dedup usr/share/stargate/dedup.sh \
-  usr/share/stargate/lib/config.sh etc/config/stargate)
+  usr/share/stargate/lib/config.sh etc/init.d/stargate-dedup etc/config/stargate)
 singbox_pid=$(pgrep -f '^/usr/bin/sing-box' | head -1)
 restore() {
   echo "   restoring from $backup" >&2
@@ -217,6 +219,7 @@ install_file() { cp "$1" "$2.new" && chmod "$3" "$2.new" && mv -f "$2.new" "$2";
 install_file "$stage/stargate-dedup" /usr/bin/stargate-dedup 755 || restore
 install_file "$stage/dedup.sh" /usr/share/stargate/dedup.sh 755 || restore
 install_file "$stage/lib/config.sh" /usr/share/stargate/lib/config.sh 644 || restore
+install_file "$stage/stargate-dedup.init" /etc/init.d/stargate-dedup 755 || restore
 uci set stargate.dedup.index_mib="$index" && uci commit stargate || restore
 /usr/share/stargate/stargate.sh generate >/dev/null 2>&1 || restore
 cmp -s /etc/stargate/config.json.next /etc/stargate/config.json || { echo "sing-box config would change" >&2; restore; }

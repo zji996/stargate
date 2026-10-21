@@ -11,7 +11,7 @@
 - 用户授权在生产路由器 `192.168.8.1` 启用去重，只选择 Sub2API 主机 `192.168.8.12`，域名默认、`compress=auto`。DMIT `69.63.200.32` 的解码端由用户先行部署，前端发现其 epoch `b5f0e9f9…`。记录见 [去重加速](reference/dedup.md)。
 - 8.1 只增量部署去重所需文件，未动 LuCI 与远控；部署前备份 `/root/stargate-dedup-backup-20261021-180656/`。8.12 新增 CA 自动同步定时器。
 - 按生产观测优化前端并推送 anytls-go `2bb41fe`（`build.sh` 已固定）：并发/丢失帧不再触发整包重发，在途预算 3 倍正文降为 2 倍并可等待 3 秒；Stargate 新增 `index_mib`。新增 `tools/dedup/upgrade.sh`，用户于 02:53 `--apply`：DMIT 解码端缓存 640 MiB、MemoryMax 1024 MiB，8.1 `index_mib=576`，sing-box 与 anytls-server 未重启。
-- 切换时新旧前端共处 300 MiB cgroup，新前端冷启动（索引为空、正文全为字面量）时被 cgroup OOM 杀掉一次，procd 1 秒拉起；Sub2API 约 10 个在途请求被切断，多数自动换号重试，1 个失败，无账号停调度。交接期内存上限待修复。
+- 切换时新旧前端共处 300 MiB cgroup，新前端冷启动（索引为空、正文全为字面量）时被 cgroup OOM 杀掉一次，procd 1 秒拉起；Sub2API 约 10 个在途请求被切断，多数自动换号重试，1 个失败，无账号停调度。交接期内存上限已在 init 脚本修复并有测试，按用户要求暂不部署到 8.1，下次必要更新时随 `upgrade.sh` 下发。
 - 开启时 Stargate 重启，Sub2API 恰有在途请求，4 个 OpenAI 账号被临时停调度约 10 分钟，期间该模型请求报无可用账号；用户手动恢复后无新错误。以后切换开关需避开高峰或先暂停相应账号。
 
 ## 2026-10-21 更新
