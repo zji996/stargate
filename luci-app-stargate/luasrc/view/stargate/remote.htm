@@ -1,0 +1,247 @@
+<%
+local state = self.remote_status
+local pc = require("luci.util").pcdata
+local function text(value) return pc(value == nil and "" or tostring(value)) end
+local function target(address, port)
+  return text(address:find(":", 1, true) and ("[" .. address .. "]") or address) .. ":" .. text(port)
+end
+local ready = state.state == "ready"
+local editable = ready and not state.legacy
+%>
+<style>
+.sg-remote{width:100%;max-width:1180px;margin:0 auto;min-width:0}
+.sg-remote-tabs{display:flex;gap:4px;border-bottom:1px solid rgba(127,127,127,.3);margin-bottom:18px;overflow-x:auto}
+.sg-remote-tabs button{border:0;background:transparent;color:inherit;padding:12px 18px;white-space:nowrap;border-bottom:3px solid transparent;border-radius:0;font-size:14px;cursor:pointer}
+.sg-remote-tabs button[aria-selected=true]{border-bottom-color:var(--primary-color,#4e8cda);font-weight:600}
+.sg-remote [hidden]{display:none!important}
+.sg-remote-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;padding:12px 0 20px}
+.sg-remote-summary span{display:block;font-size:12px;opacity:.7;margin-bottom:4px}
+.sg-remote-summary strong{display:block;font-weight:500;overflow-wrap:anywhere}
+.sg-remote-tools,.sg-remote-actions{display:flex;gap:8px;flex-wrap:wrap}
+.sg-remote-tools{justify-content:flex-end;margin:14px 0}
+.sg-remote-actions{justify-content:flex-end}
+.sg-remote-table-wrap{overflow-x:auto;margin-bottom:20px}
+.sg-remote table{width:100%;border-collapse:collapse;min-width:780px;table-layout:auto}
+.sg-remote td,.sg-remote th{padding:10px;text-align:left;border-bottom:1px solid rgba(127,127,127,.2);overflow-wrap:anywhere;vertical-align:middle}
+.sg-remote .sg-remote-address{white-space:nowrap;overflow-wrap:normal}
+.sg-remote th{font-size:12px;font-weight:600;opacity:.8}
+.sg-remote td:last-child{text-align:right}
+.sg-remote button.cbi-button{white-space:nowrap;min-height:30px;max-width:100%}
+.sg-remote-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}
+.sg-remote-fields label,.sg-remote-enroll>label{display:block;margin-bottom:6px}
+.sg-remote-fields input:not([type=checkbox]),.sg-remote-fields select,.sg-remote-enroll textarea{box-sizing:border-box;width:100%;min-width:0}
+.sg-remote-check{display:flex;align-items:center;gap:8px;min-height:30px}
+.sg-remote-check label{margin:0;overflow-wrap:anywhere}
+.sg-remote-check input{flex-shrink:0}
+.sg-remote-visitors{display:flex;gap:8px 20px;flex-wrap:wrap;margin:16px 0}
+.sg-remote h3{font-size:17px;margin:18px 0 14px}
+.sg-remote-message{padding:12px 0;overflow-wrap:anywhere}
+.sg-remote-enroll{max-width:680px}
+.sg-remote-enroll textarea{min-height:100px;resize:vertical;overflow-wrap:anywhere}
+.sg-remote-dialog{width:min(620px,calc(100vw - 32px));box-sizing:border-box;max-height:calc(100vh - 32px);overflow-y:auto;border:1px solid rgba(127,127,127,.4);border-radius:8px;padding:22px;background:var(--background-color,#fff);color:inherit;box-shadow:0 16px 48px rgba(0,0,0,.25)}
+.sg-remote-dialog::backdrop{background:rgba(0,0,0,.4)}
+.sg-remote-dialog h3{margin-top:0}
+.sg-remote-dialog .sg-remote-tools{margin-bottom:0}
+.sg-remote-dialog input,.sg-remote-dialog select{background:inherit;color:inherit}
+@media(max-width:720px){.sg-remote-fields,.sg-remote-summary{grid-template-columns:minmax(0,1fr)}.sg-remote-tools{justify-content:flex-start}.sg-remote-tabs button{padding:10px 12px}.sg-remote-dialog{padding:16px}}
+</style>
+<div class="sg-remote" id="stargate-remote">
+  <% if self.remote_message then %><div class="sg-remote-message" role="status"><%=text(self.remote_message)%></div><% end %>
+  <div class="sg-remote-tabs" role="tablist" aria-label="<%:Remote access%>">
+    <button type="button" role="tab" id="sg-tab-channel" aria-controls="sg-panel-channel" aria-selected="true" data-remote-tab="channel"><%:Channel%></button>
+    <button type="button" role="tab" id="sg-tab-services" aria-controls="sg-panel-services" aria-selected="false" tabindex="-1" data-remote-tab="services"><%:Published services%></button>
+    <button type="button" role="tab" id="sg-tab-bindings" aria-controls="sg-panel-bindings" aria-selected="false" tabindex="-1" data-remote-tab="bindings"><%:Local endpoints%></button>
+  </div>
+  <section id="sg-panel-channel" role="tabpanel" aria-labelledby="sg-tab-channel">
+    <% if state.state == "missing" then %>
+      <p><%:Remote access component is not installed.%></p>
+    <% elseif state.state == "unenrolled" then %>
+      <div class="sg-remote-enroll" data-editor="enroll">
+        <label for="sg-remote-link"><%:Enrollment link%></label>
+        <textarea id="sg-remote-link" name="remote_link" maxlength="131072" autocomplete="off" spellcheck="false" required></textarea>
+        <div class="sg-remote-check"><input id="sg-remote-activate" type="checkbox" name="remote_activate" value="1" /><label for="sg-remote-activate"><%:Start channel after enrollment%></label></div>
+        <div class="sg-remote-check"><input id="sg-remote-import" type="checkbox" name="remote_import_proxy" value="1" /><label for="sg-remote-import"><%:Also import the regular proxy node%></label></div>
+        <div class="sg-remote-tools"><button type="button" class="cbi-button cbi-button-add" data-remote-action="enroll" data-editor-target="enroll"><%:Enroll device%></button></div>
+      </div>
+    <% elseif not ready then %>
+      <p><%:Remote access is not enrolled or its status is unavailable.%></p>
+    <% else %>
+      <div class="sg-remote-summary">
+        <div><span><%:Device%></span><strong><%=text(state.device_id)%></strong></div>
+        <div><span><%:Configuration revision%></span><strong><%=text(state.revision)%></strong></div>
+        <div><span><%:Channel service%></span><strong><%=text(state.service_state == "running" and translate("Running") or state.service_state == "stopped" and translate("Stopped") or translate("Unknown"))%></strong></div>
+        <% if state.transport then %>
+          <div><span><%:Fixed channel node%></span><strong><%=text(state.transport.name ~= "" and state.transport.name or state.transport.id)%></strong></div>
+          <div><span><%:Server%></span><strong><%=target(state.transport.server, state.transport.port)%></strong></div>
+          <div><span><%:TLS server name%></span><strong><%=text(state.transport.server_name ~= "" and state.transport.server_name or "-")%></strong></div>
+        <% end %>
+        <div><span><%:Channel configuration%></span><strong><%=text(({staged=translate("Pending"),configured=translate("Configured"),applied=translate("Applied"),error=translate("Failed")})[state.runtime])%></strong></div>
+      </div>
+      <div class="sg-remote-tools">
+        <button type="button" class="cbi-button cbi-button-apply" data-remote-action="sync"><%:Sync configuration%></button>
+        <button type="button" class="cbi-button cbi-button-positive" data-remote-action="start"><%:Start channel%></button>
+        <button type="button" class="cbi-button cbi-button-negative" data-remote-action="stop" data-confirm="<%:Stop the remote access channel?%>"><%:Stop channel%></button>
+      </div>
+      <% if state.legacy then %><p><%:Update the remote access component to manage services and local endpoints.%></p><% end %>
+    <% end %>
+  </section>
+  <section id="sg-panel-services" role="tabpanel" aria-labelledby="sg-tab-services" hidden>
+    <% if not ready then %><p><%:Remote access is not ready.%></p>
+    <% elseif not state.publish then %><p><%:This device cannot publish services.%></p>
+    <% else %>
+      <% if editable then %><div class="sg-remote-tools"><button type="button" class="cbi-button cbi-button-add" data-open-editor="service"><%:Publish service%></button></div><% end %>
+      <div class="sg-remote-table-wrap"><table>
+        <thead><tr><th><%:Service ID%></th><th><%:LAN target%></th><th><%:Allowed visitors%></th><th><%:Status%></th><th><%:Actions%></th></tr></thead>
+        <tbody>
+          <% for _, item in ipairs(state.services) do %>
+            <tr data-service-row data-id="<%=text(item.id)%>" data-ip="<%=text(item.local_ip)%>" data-port="<%=text(item.local_port)%>" data-visitors="<%=text(table.concat(item.visitors, ","))%>" data-enabled="<%=text(item.enabled)%>">
+              <td><%=text(item.id)%></td><td class="sg-remote-address"><%=target(item.local_ip,item.local_port)%></td><td><%=text(#item.visitors > 0 and table.concat(item.visitors, ", ") or "-")%></td>
+              <td><%=text(not item.enabled and translate("Disabled") or (state.published and state.published[item.id] == "running") and translate("Running") or translate("Pending"))%></td>
+              <td><% if editable and item.provider == state.device_id then %><div class="sg-remote-actions">
+                <button type="button" class="cbi-button" data-open-editor="service" data-edit="1"><%:Edit%></button>
+                <button type="button" class="cbi-button" data-open-editor="grant" data-service="<%=text(item.provider .. "/" .. item.id)%>"><%:Authorization%></button>
+                <button type="button" class="cbi-button" data-remote-action="service-toggle" data-remote-id="<%=text(item.id)%>" data-enabled="<%=text(not item.enabled)%>"><%=text(item.enabled and translate("Disable") or translate("Enable"))%></button>
+                <button type="button" class="cbi-button cbi-button-negative" data-remote-action="service-delete" data-remote-id="<%=text(item.id)%>" data-confirm="<%:Delete this published service?%>"><%:Delete%></button>
+              </div><% end %></td>
+            </tr>
+          <% end %>
+          <% if #state.services == 0 then %><tr><td colspan="5"><%:No published services.%></td></tr><% end %>
+        </tbody>
+      </table></div>
+    <% end %>
+  </section>
+  <section id="sg-panel-bindings" role="tabpanel" aria-labelledby="sg-tab-bindings" hidden>
+    <% if not ready then %><p><%:Remote access is not ready.%></p>
+    <% elseif not state.bind then %><p><%:This device cannot bind local endpoints.%></p>
+    <% else %>
+      <% if editable and #state.available_services > 0 then %><div class="sg-remote-tools"><button type="button" class="cbi-button cbi-button-add" data-open-editor="binding"><%:Add local endpoint%></button></div><% end %>
+      <div class="sg-remote-table-wrap"><table>
+        <thead><tr><th><%:Endpoint ID%></th><th><%:Published service%></th><th><%:Local address%></th><th><%:Status%></th><th><%:Actions%></th></tr></thead>
+        <tbody>
+          <% for _, item in ipairs(state.bindings) do %>
+            <tr data-binding-row data-id="<%=text(item.id)%>" data-service="<%=text(item.service)%>" data-address="<%=text(item.bind_addr)%>" data-port="<%=text(item.bind_port)%>" data-enabled="<%=text(item.enabled)%>">
+              <td><%=text(item.id)%></td><td><%=text(item.service)%></td><td class="sg-remote-address"><%=target(item.bind_addr,item.bind_port)%></td><td><%=text(item.enabled and translate("Enabled") or translate("Disabled"))%></td>
+              <td><% if editable and item.device_id == state.device_id then %><div class="sg-remote-actions">
+                <button type="button" class="cbi-button" data-open-editor="binding" data-edit="1"><%:Edit%></button>
+                <button type="button" class="cbi-button" data-remote-action="binding-toggle" data-remote-id="<%=text(item.id)%>" data-enabled="<%=text(not item.enabled)%>"><%=text(item.enabled and translate("Disable") or translate("Enable"))%></button>
+                <button type="button" class="cbi-button cbi-button-negative" data-remote-action="binding-delete" data-remote-id="<%=text(item.id)%>" data-confirm="<%:Delete this local endpoint?%>"><%:Delete%></button>
+              </div><% end %></td>
+            </tr>
+          <% end %>
+          <% if #state.bindings == 0 then %><tr><td colspan="5"><%:No local endpoints.%></td></tr><% end %>
+        </tbody>
+      </table></div>
+      <% if #state.available_services == 0 then %><p><%:No authorized service is available.%></p><% end %>
+    <% end %>
+  </section>
+  <% if editable and state.publish then %>
+    <dialog class="sg-remote-dialog" data-editor="service" aria-labelledby="sg-service-title">
+      <h3 id="sg-service-title"><%:Published service%></h3>
+      <div class="sg-remote-fields">
+        <div><label for="sg-service-id"><%:Service ID%></label><input id="sg-service-id" name="remote_id" maxlength="48" pattern="[a-z][a-z0-9_-]{0,47}" required /></div>
+        <div><label for="sg-service-ip"><%:LAN IP address%></label><input id="sg-service-ip" name="remote_ip" required /></div>
+        <div><label for="sg-service-port"><%:Target port%></label><input id="sg-service-port" name="remote_target_port" type="number" min="1" max="65535" value="3389" step="1" required /></div>
+        <div class="sg-remote-check"><input id="sg-service-enabled" name="remote_enabled" type="checkbox" checked /><label for="sg-service-enabled"><%:Enabled%></label></div>
+      </div>
+      <h3><%:Allowed visitors%></h3>
+      <div class="sg-remote-visitors"><% for _, id in ipairs(state.visitor_ids) do %><div class="sg-remote-check"><input id="sg-service-visitor-<%=text(id)%>" type="checkbox" name="remote_visitors" value="<%=text(id)%>" /><label for="sg-service-visitor-<%=text(id)%>"><%=text(id)%></label></div><% end %></div>
+      <div class="sg-remote-tools"><button type="button" class="cbi-button" data-close-editor><%:Cancel%></button><button type="button" class="cbi-button cbi-button-apply" data-remote-action="service-save" data-editor-target="service"><%:Save%></button></div>
+    </dialog>
+    <dialog class="sg-remote-dialog" data-editor="grant" aria-labelledby="sg-grant-title">
+      <h3 id="sg-grant-title"><%:Authorization%></h3><input type="hidden" name="remote_service" />
+      <div class="sg-remote-visitors"><% for _, id in ipairs(state.visitor_ids) do %><div class="sg-remote-check"><input id="sg-grant-visitor-<%=text(id)%>" type="checkbox" name="remote_visitors" value="<%=text(id)%>" /><label for="sg-grant-visitor-<%=text(id)%>"><%=text(id)%></label></div><% end %></div>
+      <div class="sg-remote-tools"><button type="button" class="cbi-button" data-close-editor><%:Cancel%></button><button type="button" class="cbi-button cbi-button-apply" data-remote-action="grant-save" data-editor-target="grant"><%:Save%></button></div>
+    </dialog>
+  <% end %>
+  <% if editable and state.bind then %>
+    <dialog class="sg-remote-dialog" data-editor="binding" aria-labelledby="sg-binding-title">
+      <h3 id="sg-binding-title"><%:Local endpoint%></h3>
+      <div class="sg-remote-fields">
+        <div><label for="sg-binding-id"><%:Endpoint ID%></label><input id="sg-binding-id" name="remote_id" maxlength="48" pattern="[a-z][a-z0-9_-]{0,47}" required /></div>
+        <div><label for="sg-binding-service"><%:Published service%></label><select id="sg-binding-service" name="remote_service" required><% for _, s in ipairs(state.available_services) do %><option value="<%=text(s.provider .. "/" .. s.id)%>"><%=text(s.provider .. "/" .. s.id)%></option><% end %></select></div>
+        <div><label for="sg-binding-address"><%:Listen address%></label><select id="sg-binding-address" name="remote_bind_address"><option value="127.0.0.1">127.0.0.1</option><option value="::1">::1</option></select></div>
+        <div><label for="sg-binding-port"><%:Client local port%></label><input id="sg-binding-port" name="remote_bind_port" type="number" min="1024" max="65535" value="13389" step="1" required /></div>
+        <div class="sg-remote-check"><input id="sg-binding-enabled" name="remote_enabled" type="checkbox" checked /><label for="sg-binding-enabled"><%:Enabled%></label></div>
+      </div>
+      <div class="sg-remote-tools"><button type="button" class="cbi-button" data-close-editor><%:Cancel%></button><button type="button" class="cbi-button cbi-button-apply" data-remote-action="binding-save" data-editor-target="binding"><%:Save%></button></div>
+    </dialog>
+  <% end %>
+</div>
+<script>
+(function() {
+  'use strict';
+  var root = document.getElementById('stargate-remote'), busy = false;
+  function tab(name, focus) {
+    root.querySelectorAll('[data-remote-tab]').forEach(function(button) {
+      var selected = button.dataset.remoteTab === name;
+      button.setAttribute('aria-selected', String(selected)); button.tabIndex = selected ? 0 : -1;
+      if (selected && focus) button.focus();
+    });
+    root.querySelectorAll('[role="tabpanel"]').forEach(function(panel) { panel.hidden = panel.id !== 'sg-panel-' + name; });
+    window.history.replaceState(null, '', window.location.pathname + window.location.search + '#' + name);
+  }
+  var initial = window.location.hash.slice(1);
+  if (['channel','services','bindings'].indexOf(initial) >= 0) tab(initial, false);
+  root.addEventListener('keydown', function(event) {
+    if (!event.target.matches('[data-remote-tab]')) return;
+    var names = ['channel','services','bindings'], index = names.indexOf(event.target.dataset.remoteTab);
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      event.preventDefault(); tab(names[(index + (event.key === 'ArrowRight' ? 1 : 2)) % 3], true);
+    }
+  });
+  function editor(name) { return root.querySelector('[data-editor="' + name + '"]'); }
+  function value(dialog, name, data) { var field = dialog.querySelector('[name="' + name + '"]'); if (field) field.value = data || ''; }
+  function open(button) {
+    var name = button.dataset.openEditor, dialog = editor(name), row = button.closest('tr'), data = row ? row.dataset : {};
+    if (!dialog) return;
+    dialog.querySelectorAll('input').forEach(function(field) {
+      if (field.type === 'checkbox') field.checked = field.name === 'remote_enabled';
+      else field.value = field.name === 'remote_target_port' ? '3389' : field.name === 'remote_bind_port' ? '13389' : '';
+      field.readOnly = false;
+    });
+    if (name === 'service' && button.dataset.edit) {
+      value(dialog,'remote_id',data.id); value(dialog,'remote_ip',data.ip); value(dialog,'remote_target_port',data.port);
+      dialog.querySelector('[name="remote_id"]').readOnly = true;
+    } else if (name === 'grant') value(dialog,'remote_service',button.dataset.service);
+    else if (name === 'binding') {
+      dialog.querySelector('[name="remote_service"]').selectedIndex = 0;
+      value(dialog,'remote_bind_address','127.0.0.1');
+      if (button.dataset.edit) {
+        value(dialog,'remote_id',data.id); value(dialog,'remote_service',data.service);
+        value(dialog,'remote_bind_address',data.address); value(dialog,'remote_bind_port',data.port);
+        dialog.querySelector('[name="remote_id"]').readOnly = true;
+      }
+    }
+    if (row) {
+      var permitted = (data.visitors || '').split(',');
+      dialog.querySelectorAll('[name="remote_visitors"]').forEach(function(field) { field.checked = permitted.indexOf(field.value) >= 0; });
+      var enabled = dialog.querySelector('[name="remote_enabled"]'); if (enabled) enabled.checked = data.enabled === 'true';
+    }
+    dialog.showModal();
+  }
+  root.addEventListener('click', function(event) {
+    var button = event.target.closest('button'); if (!button || busy) return;
+    if (button.dataset.remoteTab) { tab(button.dataset.remoteTab, false); return; }
+    if (button.hasAttribute('data-close-editor')) { button.closest('dialog').close(); return; }
+    if (button.dataset.openEditor) { open(button); return; }
+    var action = button.dataset.remoteAction; if (!action) return;
+    if (button.dataset.confirm && !window.confirm(button.dataset.confirm)) return;
+    var fields = button.dataset.editorTarget ? editor(button.dataset.editorTarget).querySelectorAll('input, select, textarea') : [];
+    for (var i = 0; i < fields.length; i++) if (!fields[i].reportValidity()) return;
+    var parent = root.closest('form'), token = parent && parent.querySelector('input[name="token"]');
+    if (!token || !token.value) return;
+    var form = document.createElement('form'); form.method = 'post'; form.action = window.location.href;
+    function add(name, data) { var field = document.createElement('input'); field.type = 'hidden'; field.name = name; field.value = data; form.appendChild(field); }
+    add('token',token.value); add('stargate_remote_action',action);
+    if (button.dataset.remoteId) add('remote_id',button.dataset.remoteId);
+    if (button.dataset.enabled) add('remote_enabled',button.dataset.enabled);
+    for (var j = 0; j < fields.length; j++) {
+      var field = fields[j]; if (!field.name) continue;
+      if (field.name === 'remote_enabled') add(field.name,field.checked ? 'true' : 'false');
+      else if (field.type !== 'checkbox' || field.checked) add(field.name,field.value);
+    }
+    busy = true; root.querySelectorAll('button').forEach(function(control) { control.disabled = true; });
+    document.body.appendChild(form); form.submit();
+  });
+})();
+</script>

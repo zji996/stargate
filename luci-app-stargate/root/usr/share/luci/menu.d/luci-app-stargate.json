@@ -65,6 +65,15 @@
       "path": "stargate/advanced"
     }
   },
+  "admin/services/stargate/remote": {
+    "title": "Remote access",
+    "translate": "stargate",
+    "order": 55,
+    "action": {
+      "type": "cbi",
+      "path": "stargate/client/remote"
+    }
+  },
   "admin/services/stargate/component": {
     "title": "Maintenance",
     "translate": "stargate",

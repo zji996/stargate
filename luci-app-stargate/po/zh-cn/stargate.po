@@ -711,3 +711,186 @@ msgstr "例如：客厅电视 / 工作机"
 
 msgid "Configured"
 msgstr "已配置端口"
+
+msgid "Remote access"
+msgstr "远程访问"
+
+msgid "Remote access is not ready."
+msgstr "远程访问尚未就绪。"
+
+msgid "Remote access configuration updated."
+msgstr "远程访问配置已更新。"
+
+msgid "Remote access update failed. Check the service status."
+msgstr "远程访问更新失败，请检查服务状态。"
+
+msgid "Invalid remote access parameters."
+msgstr "远程访问参数无效。"
+
+msgid "Remote access component is not installed."
+msgstr "远程访问组件尚未安装。"
+
+msgid "Remote access is not enrolled or its status is unavailable."
+msgstr "远程访问尚未开通，或无法读取状态。"
+
+msgid "Device"
+msgstr "设备"
+
+msgid "Role"
+msgstr "角色"
+
+msgid "Provider"
+msgstr "发布端"
+
+msgid "Visitor"
+msgstr "访问端"
+
+msgid "Configuration revision"
+msgstr "配置版本"
+
+msgid "Sync configuration"
+msgstr "同步配置"
+
+msgid "Mapping ID"
+msgstr "映射标识"
+
+msgid "LAN target"
+msgstr "内网目标"
+
+msgid "Client local port"
+msgstr "客户端本地端口"
+
+msgid "Allowed visitors"
+msgstr "获准访问的设备"
+
+msgid "Delete this remote access mapping?"
+msgstr "删除此远程访问映射？"
+
+msgid "No remote access mappings."
+msgstr "暂无远程访问映射。"
+
+msgid "Add mapping"
+msgstr "添加映射"
+
+msgid "No visitor device is enrolled."
+msgstr "尚无已开通的访问设备。"
+
+msgid "LAN IPv4 address"
+msgstr "内网 IPv4 地址"
+
+msgid "Target port"
+msgstr "目标端口"
+
+msgid "Visitor device"
+msgstr "访问设备"
+
+msgid "Channel"
+msgstr "通道"
+
+msgid "Published services"
+msgstr "发布服务"
+
+msgid "Local endpoints"
+msgstr "本地入口"
+
+msgid "Enrollment link"
+msgstr "开通链接"
+
+msgid "Start channel after enrollment"
+msgstr "开通后启动通道"
+
+msgid "Also import the regular proxy node"
+msgstr "同时导入普通代理节点"
+
+msgid "Enroll device"
+msgstr "开通设备"
+
+msgid "Channel service"
+msgstr "通道服务"
+
+msgid "Fixed channel node"
+msgstr "固定通道节点"
+
+msgid "TLS server name"
+msgstr "TLS 服务器名称"
+
+msgid "Channel configuration"
+msgstr "通道配置"
+
+msgid "Pending"
+msgstr "等待应用"
+
+msgid "Start channel"
+msgstr "启动通道"
+
+msgid "Stop channel"
+msgstr "停止通道"
+
+msgid "Stop the remote access channel?"
+msgstr "停止远程访问通道？"
+
+msgid "Update the remote access component to manage services and local endpoints."
+msgstr "请升级远程访问组件后管理发布服务与本地入口。"
+
+msgid "This device cannot publish services."
+msgstr "此设备未获准发布服务。"
+
+msgid "Publish service"
+msgstr "发布服务"
+
+msgid "Service ID"
+msgstr "服务标识"
+
+msgid "Authorization"
+msgstr "访问授权"
+
+msgid "Delete this published service?"
+msgstr "删除此发布服务？"
+
+msgid "No published services."
+msgstr "暂无发布服务。"
+
+msgid "This device cannot bind local endpoints."
+msgstr "此设备未获准绑定本地入口。"
+
+msgid "Add local endpoint"
+msgstr "添加本地入口"
+
+msgid "Endpoint ID"
+msgstr "入口标识"
+
+msgid "Published service"
+msgstr "发布服务"
+
+msgid "Local address"
+msgstr "本地地址"
+
+msgid "Delete this local endpoint?"
+msgstr "删除此本地入口？"
+
+msgid "No local endpoints."
+msgstr "暂无本地入口。"
+
+msgid "No authorized service is available."
+msgstr "暂无获准访问的服务。"
+
+msgid "LAN IP address"
+msgstr "内网 IP 地址"
+
+msgid "Local endpoint"
+msgstr "本地入口"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "Disabled"
+msgstr "已停用"
+
+msgid "Enable"
+msgstr "启用"
+
+msgid "Disable"
+msgstr "停用"

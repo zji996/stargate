@@ -3,7 +3,7 @@
 include $(TOPDIR)/rules.mk
 
 LUCI_TITLE:=LuCI support for Stargate
-LUCI_DEPENDS:=+luci-base +rpcd +rpcd-mod-file +rpcd-mod-luci +sing-box
+LUCI_DEPENDS:=+luci-base +luci-compat +rpcd +rpcd-mod-file +rpcd-mod-luci +sing-box
 LUCI_PKGARCH:=all
 
 define Package/luci-app-stargate/conffiles

@@ -671,3 +671,186 @@ msgstr ""
 
 msgid "Configured"
 msgstr ""
+
+msgid "Remote access"
+msgstr ""
+
+msgid "Remote access is not ready."
+msgstr ""
+
+msgid "Remote access configuration updated."
+msgstr ""
+
+msgid "Remote access update failed. Check the service status."
+msgstr ""
+
+msgid "Invalid remote access parameters."
+msgstr ""
+
+msgid "Remote access component is not installed."
+msgstr ""
+
+msgid "Remote access is not enrolled or its status is unavailable."
+msgstr ""
+
+msgid "Device"
+msgstr ""
+
+msgid "Role"
+msgstr ""
+
+msgid "Provider"
+msgstr ""
+
+msgid "Visitor"
+msgstr ""
+
+msgid "Configuration revision"
+msgstr ""
+
+msgid "Sync configuration"
+msgstr ""
+
+msgid "Mapping ID"
+msgstr ""
+
+msgid "LAN target"
+msgstr ""
+
+msgid "Client local port"
+msgstr ""
+
+msgid "Allowed visitors"
+msgstr ""
+
+msgid "Delete this remote access mapping?"
+msgstr ""
+
+msgid "No remote access mappings."
+msgstr ""
+
+msgid "Add mapping"
+msgstr ""
+
+msgid "No visitor device is enrolled."
+msgstr ""
+
+msgid "LAN IPv4 address"
+msgstr ""
+
+msgid "Target port"
+msgstr ""
+
+msgid "Visitor device"
+msgstr ""
+
+msgid "Channel"
+msgstr ""
+
+msgid "Published services"
+msgstr ""
+
+msgid "Local endpoints"
+msgstr ""
+
+msgid "Enrollment link"
+msgstr ""
+
+msgid "Start channel after enrollment"
+msgstr ""
+
+msgid "Also import the regular proxy node"
+msgstr ""
+
+msgid "Enroll device"
+msgstr ""
+
+msgid "Channel service"
+msgstr ""
+
+msgid "Fixed channel node"
+msgstr ""
+
+msgid "TLS server name"
+msgstr ""
+
+msgid "Channel configuration"
+msgstr ""
+
+msgid "Pending"
+msgstr ""
+
+msgid "Start channel"
+msgstr ""
+
+msgid "Stop channel"
+msgstr ""
+
+msgid "Stop the remote access channel?"
+msgstr ""
+
+msgid "Update the remote access component to manage services and local endpoints."
+msgstr ""
+
+msgid "This device cannot publish services."
+msgstr ""
+
+msgid "Publish service"
+msgstr ""
+
+msgid "Service ID"
+msgstr ""
+
+msgid "Authorization"
+msgstr ""
+
+msgid "Delete this published service?"
+msgstr ""
+
+msgid "No published services."
+msgstr ""
+
+msgid "This device cannot bind local endpoints."
+msgstr ""
+
+msgid "Add local endpoint"
+msgstr ""
+
+msgid "Endpoint ID"
+msgstr ""
+
+msgid "Published service"
+msgstr ""
+
+msgid "Local address"
+msgstr ""
+
+msgid "Delete this local endpoint?"
+msgstr ""
+
+msgid "No local endpoints."
+msgstr ""
+
+msgid "No authorized service is available."
+msgstr ""
+
+msgid "LAN IP address"
+msgstr ""
+
+msgid "Local endpoint"
+msgstr ""
+
+msgid "Unknown"
+msgstr ""
+
+msgid "Enabled"
+msgstr ""
+
+msgid "Disabled"
+msgstr ""
+
+msgid "Enable"
+msgstr ""
+
+msgid "Disable"
+msgstr ""

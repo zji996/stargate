@@ -78,6 +78,10 @@ case "$action" in
   probe) probe_url "${2:-}" ;;
   node-add) node_add_values "${2:-}" "${3:-}" "${4:-443}" "${5:-}" "${6:-}" "${7:-1}" "${8:-0}" "${9:-}" "${10:-}" "${11:-0.0.0.0}" ;;
   node-add-link) node_add_link "${2:-}" ;;
+  node-add-link-file)
+    [ -f "${2:-}" ] && [ ! -L "$2" ] || exit 1
+    node_add_link "$(cat "$2")"
+    ;;
   node-update) if [ "$#" -ge 9 ]; then node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}" "${9:-0}" "${10:-}" "${11:-}" "${12:-0.0.0.0}"; else node_update "${2:-}" "${3:-}" "${4:-}" "${5:-443}" "${6:-}" "${7:-}" "${8:-1}"; fi ;;
   node-list) node_list ;;
   node-use) node_use "${2:-}" ;;

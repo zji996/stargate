@@ -19,6 +19,7 @@ function index()
   entry({"admin", "services", "stargate", "dns"}, cbi("stargate/client/dns"), _("DNS"), 30).leaf = true
   entry({"admin", "services", "stargate", "rules"}, cbi("stargate/client/rules"), _("Rules"), 40).leaf = true
   entry({"admin", "services", "stargate", "advanced"}, cbi("stargate/client/advanced"), _("Advanced"), 50).leaf = true
+  entry({"admin", "services", "stargate", "remote"}, cbi("stargate/client/remote"), _("Remote access"), 55).leaf = true
   entry({"admin", "services", "stargate", "component"}, cbi("stargate/client/component"), _("Maintenance"), 60).leaf = true
   entry({"admin", "services", "stargate", "logs"}, cbi("stargate/client/logs"), _("Logs"), 70).leaf = true
 
