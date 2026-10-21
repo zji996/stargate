@@ -101,6 +101,7 @@ write_inbounds() {
       printf '    }'
     fi
   done
+  write_dedup_inbounds
   printf '\n'
 }
 
@@ -153,6 +154,123 @@ add_aux_inline_rule() {
 write_aux_fallback_rules() {
   for aux_id in $(aux_route_ids); do
     add_aux_rule "$aux_id" "\"outbound\": \"$(aux_outbound_tag "$aux_id")\" }"
+  done
+}
+
+# Dedup. When on, TLS connections from the listed devices to the dedup domains
+# go to one front on loopback instead of their node. Each node is a lane: its
+# connections reach the front with the lane's SOCKS username, and the front
+# comes back through dedup-in with the same one, so they still leave through
+# that node. "main" is the active node.
+dedup_password="stargate-dedup"
+
+load_dedup_config() {
+  dedup_enabled="$(bool_value "$(uci_get dedup enabled 0)")"
+  dedup_devices="$(uci_get dedup devices '' | tr ',\t\n' '   ')"
+  dedup_domains="$(uci_get dedup domains 'chatgpt.com api.openai.com' | tr 'A-Z,\t\n' 'a-z   ')"
+  dedup_port="$(uci_get dedup port 10860)"
+  dedup_memory_mib="$(uci_get dedup memory_mib 300)"
+  dedup_compress="$(uci_get dedup compress auto)"
+  dedup_lanes=""
+  # Direct mode sends nothing to a node, so nothing would be deduplicated.
+  if [ "$dedup_enabled" = 1 ] && [ -n "$dedup_devices" ] && [ "$rules_mode" != direct ]; then
+    dedup_lanes="main $(aux_route_ids | tr '\n' ' ')"
+  fi
+}
+
+# Checks the options the front itself takes; used_ports, if set by
+# validate_config, also rules out the ports Stargate listens on.
+validate_dedup_config() {
+  validate_port_value "$dedup_port" "dedup port" || exit 1
+  [ "$dedup_port" -le 65533 ] || { echo "dedup port must leave two ports above it" >&2; exit 1; }
+  for dl_p in "$dedup_port" $((dedup_port + 1)) $((dedup_port + 2)); do
+    for dl_used in ${used_ports:-}; do
+      [ "$dl_used" != "$dl_p" ] || { echo "dedup port $dl_p conflicts with another Stargate port" >&2; exit 1; }
+    done
+  done
+  case "$dedup_memory_mib" in
+    ''|*[!0-9]*) echo "dedup memory_mib must be numeric" >&2; exit 1 ;;
+  esac
+  [ "$dedup_memory_mib" -ge 100 ] || { echo "dedup memory_mib must be at least 100" >&2; exit 1; }
+  case "$dedup_compress" in auto|huffman|off) ;; *) echo "unsupported dedup compress: $dedup_compress" >&2; exit 1 ;; esac
+  [ -n "$dedup_domains" ] || { echo "dedup domains are required" >&2; exit 1; }
+  for dl_domain in $dedup_domains; do
+    printf '%s\n' "$dl_domain" | grep -Eq '^[a-z0-9-]+(\.[a-z0-9-]+)+$' || {
+      echo "invalid dedup domain: $dl_domain" >&2
+      exit 1
+    }
+  done
+  for dl_device in $dedup_devices; do
+    printf '%s\n' "$dl_device" | grep -Eq '^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$' || {
+      echo "invalid dedup device (want an IP or CIDR): $dl_device" >&2
+      exit 1
+    }
+  done
+}
+
+dedup_lane_out() {
+  if [ "$1" = main ]; then
+    printf anytls-out
+  else
+    aux_outbound_tag "$1"
+  fi
+}
+
+# JSON list of the inbounds whose traffic would otherwise leave through lane $1.
+dedup_lane_inbounds() {
+  if [ "$1" != main ]; then
+    aux_inbound_tags "$1"
+    return 0
+  fi
+  dl_tags='"socks-in", "http-in"'
+  [ "$transparent_proxy" != 1 ] || dl_tags="\"transparent-in\", $dl_tags"
+  for dl_aux in ${aux_node_ids:-}; do
+    [ "$(aux_outbound_tag "$dl_aux")" = anytls-out ] || continue
+    dl_aux_tags="$(aux_inbound_tags "$dl_aux")"
+    [ -z "$dl_aux_tags" ] || dl_tags="$dl_tags, $dl_aux_tags"
+  done
+  printf '%s' "$dl_tags"
+}
+
+# Quote validated, space-separated words as a JSON list body.
+json_words() {
+  dl_out=""
+  for dl_word in $1; do
+    [ -z "$dl_out" ] || dl_out="$dl_out, "
+    dl_out="$dl_out\"$dl_word\""
+  done
+  printf '%s' "$dl_out"
+}
+
+write_dedup_inbounds() {
+  [ -n "$dedup_lanes" ] || return 0
+  dl_users=""
+  for dl_lane in $dedup_lanes; do
+    [ -z "$dl_users" ] || dl_users="$dl_users, "
+    dl_users="$dl_users{ \"username\": \"$dl_lane\", \"password\": \"$dedup_password\" }"
+  done
+  printf ',\n    { "type": "socks", "tag": "dedup-in", "listen": "127.0.0.1", "listen_port": %s, "users": [%s] }' "$((dedup_port + 1))" "$dl_users"
+}
+
+write_dedup_outbounds() {
+  for dl_lane in $dedup_lanes; do
+    printf ',\n    { "type": "socks", "tag": "dedup-out-%s", "server": "127.0.0.1", "server_port": %s, "version": "5", "username": "%s", "password": "%s" }\n' "$dl_lane" "$dedup_port" "$dl_lane" "$dedup_password"
+  done
+}
+
+# Before everything but sniffing: the front's own connections leave through
+# their lane's node, and steered connections must not be sent anywhere else.
+write_dedup_route_rules() {
+  [ -n "$dedup_lanes" ] || return 0
+  for dl_lane in $dedup_lanes; do
+    add_rule "{ \"inbound\": [\"dedup-in\"], \"auth_user\": [\"$dl_lane\"], \"outbound\": \"$(dedup_lane_out "$dl_lane")\" }"
+  done
+  add_rule '{ "inbound": ["dedup-in"], "action": "reject" }'
+  dl_match="\"network\": \"tcp\", \"port\": 443, \"source_ip_cidr\": [$(json_words "$dedup_devices")], \"domain_suffix\": [$(json_words "$dedup_domains")]"
+  for dl_lane in $dedup_lanes; do
+    dl_inbounds="$(dedup_lane_inbounds "$dl_lane")"
+    [ -n "$dl_inbounds" ] || continue
+    add_rule "{ \"inbound\": [$dl_inbounds], $dl_match, \"outbound\": \"dedup-out-$dl_lane\" }"
   done
 }
 
@@ -253,6 +371,7 @@ write_route_rules() {
       add_rule '{ "inbound": ["dns-in", "dns6-in"], "action": "hijack-dns" }'
     fi
   fi
+  write_dedup_route_rules
   if [ "$rules_block_quic" = "1" ]; then
     add_rule '{ "network": "udp", "port": 443, "action": "reject" }'
   fi
@@ -300,6 +419,8 @@ write_route_rules() {
 generate_config() {
   load_config
   validate_config
+  load_dedup_config
+  [ -z "$dedup_lanes" ] || validate_dedup_config
   mkdir -p "$work_dir"
   lan_domain_match="$(write_lan_domain_match)"
 
@@ -395,6 +516,7 @@ EOF
     }
 EOF
     done
+    write_dedup_outbounds
     cat <<EOF
 ,
     { "type": "direct", "tag": "direct" },
