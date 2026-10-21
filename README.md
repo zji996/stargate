@@ -87,6 +87,12 @@ anytls://password@host:8443/?insecure=1
 - `insecure=1` / `insecure=true`
 - `sni=example.com`
 
+## 可选远程访问
+
+独立的远程访问组件使用 AnyTLS 承载公网链路、frp STCP 中转指定内网端口，提供一次性设备开通链接、映射自动同步和 LuCI 管理入口。原有 AnyTLS 链接继续使用；组件需要显式安装与授权，默认不启用。
+
+安装、权限与验证边界见 [AnyTLS 远程访问](docs/reference/remote-access.md)。
+
 ## 设计文档
 
 [Mac 七页交互预览](tools/macos-preview/README.md) 与 [完整应用设计](tools/macos-preview/DESIGN.md) 已提供，当前是示例原型，尚无 Mac 原生运行后端。

@@ -32,11 +32,12 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 
 ## 仓库结构
 
-当前项目没有多个独立运行单元，不拆 `apps/` 或 `packages/`。
+主代理仍沿用既有脚本与 LuCI 结构，可选远程访问组件放在 `tools/remote-access/`，不拆 `apps/` 或 `packages/`。
 
 - `scripts/stargate.sh`：当前唯一业务脚本，负责安装服务、解析 AnyTLS URI、生成配置、校验、启动、停止、状态查看和卸载。
 - `luci-app-stargate/`：第一版 OpenWrt LuCI 管理前端包，负责 UCI 配置、页面、服务入口和配置生成后端。LuCI 后端统一入口是 `root/usr/share/stargate/stargate.sh`，具体实现按 common、nodes、rules、config、firewall、maintenance 拆到 `root/usr/share/stargate/lib/*.sh`。
 - `manage.sh`：本地开发检查入口，只做命令路由。
+- `tools/remote-access/`：显式安装的 AnyTLS 远程访问组件，包含控制端、映射同步程序、frp 集成与独立服务安装器。
 - `examples/anytls.json`：结构化节点配置方向示例。
 - `docs/current.md`：当前协作上下文。
 - `docs/roadmap.md`：未来方向。
@@ -46,6 +47,12 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - `third_party/anytls-go`：`zji996/anytls-go` 的 `zji-dev` 分支，只读参考实际使用的 AnyTLS 协议实现；不增加第二个受管核心。
 
 `third_party/` 不参与构建、安装、发布和运行，Stargate 代码不允许直接引用其中内容。
+
+## 可选远程访问组件
+
+用户明确授权新增 AnyTLS 远程访问能力。`tools/remote-access/` 是独立运行组件：服务器控制端和 frps、客户端配置同步程序，以及独立 sing-box/frpc 服务。主代理仍使用 sing-box；frp 仅承担显式开启的 STCP 端口映射，不用于代理核心选择。
+
+组件独立配置、凭据和更新周期；普通代理遵循主节点与分流规则，端口映射使用开通时固定的 AnyTLS 通道，不随主代理选择变化。发布服务、访客授权和访问设备的本地入口分别保存，同一设备可以同时发布和访问。原有 AnyTLS 协议与链接格式不变；导入 Stargate 链接时可以显式添加普通代理节点，但不会选择主节点。附加组件不依赖第三方参考目录，现阶段采用独立安装入口。具体边界见 [AnyTLS 远程访问](remote-access.md)。
 
 ## Mac 交互原型
 
