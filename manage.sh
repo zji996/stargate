@@ -9,6 +9,7 @@ Usage:
   sh manage.sh check docs
   sh manage.sh check secrets
   sh manage.sh check macos-preview
+  sh manage.sh check remote
 USAGE
 }
 
@@ -161,6 +162,22 @@ check_secrets() {
   fi
 }
 
+check_remote() {
+  for file in tools/remote-access/*.sh tools/remote-access/services/*.init tools/remote-access/tests/*.sh; do
+    sh -n "$file"
+  done
+  if command -v go >/dev/null 2>&1; then
+    (cd tools/remote-access && go test ./...)
+  else
+    echo 'skip remote-access tests: Go is required' >&2
+  fi
+  if command -v bwrap >/dev/null 2>&1; then
+    sh tools/remote-access/tests/installers.sh
+  else
+    echo 'skip isolated installer tests: bubblewrap is required' >&2
+  fi
+}
+
 action="${1:-}"
 target="${2:-all}"
 
@@ -172,6 +189,7 @@ case "$action:$target" in
     check_js
     check_i18n
     check_secrets
+    check_remote
     ;;
   check:shell)
     check_shell
@@ -193,6 +211,9 @@ case "$action:$target" in
     ;;
   check:secrets)
     check_secrets
+    ;;
+  check:remote)
+    check_remote
     ;;
   -h:*|--help:*|help:*|:"")
     usage

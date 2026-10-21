@@ -1,0 +1,36 @@
+#!/bin/sh
+set -eu
+script=$1
+action=$2
+mkdir -p /test-state /etc/rc.d
+procd_open_instance() { instance=$1; }
+procd_set_param() { :; }
+procd_close_instance() {
+  [ ! -e "/fail/router-$instance" ] || return 0
+  touch "/test-state/router.$instance"
+}
+. "$script"
+case "$action" in
+  enabled) [ -e /etc/rc.d/S96stargate-remote ] ;;
+  running) [ -e /test-state/router.transport ] || [ -e /test-state/router.frpc ] || [ -e /test-state/router.sync ] ;;
+  enable) echo 'router enable' >>/test-state/actions; ln -sf ../init.d/stargate-remote /etc/rc.d/S96stargate-remote ;;
+  disable) echo 'router disable' >>/test-state/actions; rm -f /etc/rc.d/S96stargate-remote ;;
+  stop)
+    echo 'router stop' >>/test-state/actions
+    [ ! -e /fail/router-stop ] || { rm -f /fail/router-stop; exit 1; }
+    rm -f /test-state/router.transport /test-state/router.frpc /test-state/router.sync
+    ;;
+  start)
+    echo 'router start' >>/test-state/actions
+    [ ! -e /fail/router-start ] || { rm -f /fail/router-start; exit 1; }
+    start_service
+    ;;
+  restart)
+    echo 'router restart' >>/test-state/actions
+    [ ! -e /fail/router-restart ] || { rm -f /fail/router-restart; exit 1; }
+    rm -f /test-state/router.transport /test-state/router.frpc /test-state/router.sync
+    start_service
+    ;;
+  reload) reload_service ;;
+  *) echo "unexpected init operation: $action" >&2; exit 2 ;;
+esac

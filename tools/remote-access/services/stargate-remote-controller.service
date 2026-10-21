@@ -1,0 +1,19 @@
+[Unit]
+Description=Stargate remote access controller
+After=network.target
+
+[Service]
+User=stargate-remote
+Group=stargate-remote
+ExecStart=/usr/local/lib/stargate-remote/stargate-remote serve --dir /etc/stargate-remote
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/etc/stargate-remote
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

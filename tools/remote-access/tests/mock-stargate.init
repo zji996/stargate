@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+case "$1" in
+  status) [ -e /test-state/main.running ] ;;
+  restart)
+    echo 'main restart' >>/test-state/actions
+    touch /test-state/main.running
+    ;;
+  *) exit 2 ;;
+esac

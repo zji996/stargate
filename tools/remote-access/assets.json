@@ -1,0 +1,17 @@
+{
+  "frp_version": "0.71.0",
+  "frp": {
+    "linux_amd64": "84f27e39f11169f7adcef8e8b70c9329de17747b1f14dad9fb95eef5682ea716",
+    "linux_arm64": "f33c293c275d8fc68c654b6fba8f10b2551d6463d09a9fc9cffb7227eae82266",
+    "windows_amd64": "9e5062e3e5cf07e67144a3a4acf175ef6a2486f3605dd6cf288bae34ab39819f",
+    "darwin_arm64": "45be02b186860d375ed49a8941ae9569628a54bf14e67fc36b29c98c99dabcc6",
+    "darwin_amd64": "1b1b4e2f1836e21e8733f1dddaacd4ed9ae67d7dbee39046b9d7b7eda6253637"
+  },
+  "singbox_version": "1.12.25",
+  "singbox": {
+    "linux-amd64": "a1ec76e2b6b139eb747a1b1ebee7d14b8d4be5a833596cad8070a31ef960301f",
+    "windows-amd64": "492df6eb97c4c749d45350d792ecece71278d83c4979149ba6a142765b8fc1d4",
+    "darwin-arm64": "a4a06d507f3f4d951490168d1372fce4c02db7211e88af9da13f93ed98068d5e",
+    "darwin-amd64": "fb9cb2a1d3160b9ef4a288818286ad27711907228232b8d84410cad7e42726d8"
+  }
+}
