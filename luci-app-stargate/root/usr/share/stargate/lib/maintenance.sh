@@ -183,6 +183,52 @@ EOF
   echo "default Stargate config restored; service stopped"
 }
 
+singbox_maintenance_lock() {
+  maintenance_lock=/var/lock/stargate-remote-install
+  mkdir -p /var/lock
+  mkdir "$maintenance_lock" 2>/dev/null || {
+    echo "another sing-box or remote-access maintenance operation is active" >&2
+    exit 1
+  }
+  trap 'rmdir "$maintenance_lock"' EXIT
+  trap 'exit 1' HUP INT TERM
+}
+
+singbox_check_remote_config() {
+  [ ! -f /etc/stargate-remote/transport.json ] ||
+    "$next_bin" check -c /etc/stargate-remote/transport.json >/dev/null 2>&1
+}
+
+singbox_managed_state() {
+  was_running=0
+  /etc/init.d/stargate status >/dev/null 2>&1 && was_running=1
+  remote_was_running=0
+  if [ -x /etc/init.d/stargate-remote ] && /etc/init.d/stargate-remote running >/dev/null 2>&1; then
+    remote_was_running=1
+  fi
+}
+
+singbox_restart_managed() {
+  if [ "$was_running" = 1 ]; then
+    STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart || return 1
+  fi
+  if [ "$remote_was_running" = 1 ]; then
+    /etc/init.d/stargate-remote restart || return 1
+    remote_ready=0
+    for remote_attempt in 1 2 3 4 5; do
+      remote_state=$(ubus call service list '{"name":"stargate-remote"}') || return 1
+      remote_ready=1
+      for remote_instance in transport frpc sync; do
+        remote_running=$(printf '%s\n' "$remote_state" | jsonfilter -e "@[\"stargate-remote\"].instances.$remote_instance.running") || return 1
+        [ "$remote_running" = true ] || remote_ready=0
+      done
+      [ "$remote_ready" = 0 ] || break
+      sleep 1
+    done
+    [ "$remote_ready" = 1 ] || return 1
+  fi
+}
+
 singbox_upgrade() {
   upload="${1:-}"
   [ -f "$upload" ] || {
@@ -190,6 +236,7 @@ singbox_upgrade() {
     exit 1
   }
   load_config
+  singbox_maintenance_lock
   install_dir="$(dirname "$singbox_bin")"
   backup_dir="/usr/share/stargate/backup"
   backup_bin="$backup_dir/sing-box.bak.gz"
@@ -197,10 +244,16 @@ singbox_upgrade() {
   cleanup_upgrade_files() {
     rm -f "$next_bin" "$backup_bin.next"
   }
+  finish_upgrade() {
+    cleanup_upgrade_files
+    rmdir "$maintenance_lock"
+  }
+
+  trap finish_upgrade EXIT
+  trap 'exit 1' HUP INT TERM
 
   mkdir -p "$install_dir" "$backup_dir"
   cleanup_upgrade_files
-  trap cleanup_upgrade_files EXIT INT TERM
   required_bytes="$(($(wc -c <"$upload") + 16777216))"
   available_bytes="$(df -Pk "$install_dir" | awk 'NR == 2 { printf "%.0f", $4 * 1024 }')"
   [ -n "$available_bytes" ] && [ "$available_bytes" -ge "$required_bytes" ] || {
@@ -226,9 +279,12 @@ singbox_upgrade() {
       exit 1
     }
   fi
+  singbox_check_remote_config || {
+    echo "uploaded sing-box cannot load the remote-access config" >&2
+    exit 1
+  }
 
-  was_running=0
-  /etc/init.d/stargate status >/dev/null 2>&1 && was_running=1
+  singbox_managed_state
   had_previous=0
   if [ -x "$singbox_bin" ]; then
     gzip -c "$singbox_bin" >"$backup_bin.next" && mv "$backup_bin.next" "$backup_bin" || {
@@ -239,11 +295,11 @@ singbox_upgrade() {
     had_previous=1
   fi
   mv "$next_bin" "$singbox_bin"
-  if [ "$was_running" = "1" ] && ! STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart; then
+  if ! singbox_restart_managed; then
     if [ "$had_previous" = "1" ] && [ -s "$backup_bin" ]; then
       rm -f "$singbox_bin"
       gzip -dc "$backup_bin" >"$next_bin" && chmod 0755 "$next_bin" && mv "$next_bin" "$singbox_bin"
-      STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart >/dev/null 2>&1 || true
+      singbox_restart_managed >/dev/null 2>&1 || true
     else
       rm -f "$singbox_bin"
     fi
@@ -252,13 +308,17 @@ singbox_upgrade() {
     exit 1
   fi
   cleanup_upgrade_files
-  trap - EXIT INT TERM
+  rmdir "$maintenance_lock"
+  trap - EXIT HUP INT TERM
   "$singbox_bin" version | head -1
   echo "sing-box upgraded: $singbox_bin"
 }
 
 singbox_rollback() {
   load_config
+  singbox_maintenance_lock
+  trap 'rmdir "$maintenance_lock"' EXIT
+  trap 'exit 1' HUP INT TERM
   backup_bin="/usr/share/stargate/backup/sing-box.bak.gz"
   [ -s "$backup_bin" ] || {
     echo "sing-box backup not found: $backup_bin" >&2
@@ -268,15 +328,18 @@ singbox_rollback() {
     echo "sing-box backup is corrupt: $backup_bin" >&2
     exit 1
   }
-  was_running=0
-  /etc/init.d/stargate status >/dev/null 2>&1 && was_running=1
+  singbox_managed_state
   current_backup="$tmp_prefix-sing-box.rollback-from.gz"
   next_bin="$singbox_bin.next"
   cleanup_rollback_files() {
     rm -f "$current_backup" "$next_bin"
   }
+  finish_rollback() {
+    cleanup_rollback_files
+    rmdir "$maintenance_lock"
+  }
   cleanup_rollback_files
-  trap cleanup_rollback_files EXIT INT TERM
+  trap finish_rollback EXIT
   [ ! -x "$singbox_bin" ] || gzip -c "$singbox_bin" >"$current_backup"
   gzip -dc "$backup_bin" >"$next_bin"
   chmod 0755 "$next_bin"
@@ -292,19 +355,24 @@ singbox_rollback() {
       exit 1
     }
   fi
+  singbox_check_remote_config || {
+    echo "backup sing-box cannot load the remote-access config" >&2
+    exit 1
+  }
   mv "$next_bin" "$singbox_bin"
-  if [ "$was_running" = "1" ] && ! STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart; then
+  if ! singbox_restart_managed; then
     if [ -s "$current_backup" ]; then
       rm -f "$singbox_bin"
       gzip -dc "$current_backup" >"$next_bin" && chmod 0755 "$next_bin" && mv "$next_bin" "$singbox_bin"
-      STARGATE_CONFIG_READY=1 /etc/init.d/stargate restart >/dev/null 2>&1 || true
+      singbox_restart_managed >/dev/null 2>&1 || true
     fi
     rm -f "$current_backup" "$next_bin"
     echo "sing-box rollback restart failed; restored current binary" >&2
     exit 1
   fi
   cleanup_rollback_files
-  trap - EXIT INT TERM
+  rmdir "$maintenance_lock"
+  trap - EXIT HUP INT TERM
   "$singbox_bin" version | head -1
   echo "sing-box rolled back: $singbox_bin"
 }
