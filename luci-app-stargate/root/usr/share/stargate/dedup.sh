@@ -51,7 +51,7 @@ print_front() {
   args="front -listen 127.0.0.1:$dedup_port -via socks5://127.0.0.1:$((dedup_port + 1))"
   args="$args -admin 127.0.0.1:$((dedup_port + 2)) -ca-dir $dedup_ca_dir"
   args="$args -domains $(printf '%s' "$dedup_domains" | tr ' ' ',') -compress $dedup_compress"
-  args="$args -index-mib $((230 * dedup_memory_mib / 300)) -inflight-mib $((128 * dedup_memory_mib / 300))"
+  args="$args -index-mib ${dedup_index_mib:-$((230 * dedup_memory_mib / 300))} -inflight-mib $((128 * dedup_memory_mib / 300))"
   args="$args -memory-mib $((220 * dedup_memory_mib / 300)) -linger 3s"
   printf 'front_%s %s\n' "$(printf '%s %s' "$args" "$(md5sum <"$dedup_bin")" | md5sum | cut -c1-8)" "$args"
 }

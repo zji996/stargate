@@ -170,6 +170,8 @@ load_dedup_config() {
   dedup_domains="$(uci_get dedup domains 'chatgpt.com api.openai.com' | tr 'A-Z,\t\n' 'a-z   ')"
   dedup_port="$(uci_get dedup port 10860)"
   dedup_memory_mib="$(uci_get dedup memory_mib 300)"
+  # Empty: sized with memory_mib. Set it to about 90% of the decoder's cache.
+  dedup_index_mib="$(uci_get dedup index_mib '')"
   dedup_compress="$(uci_get dedup compress auto)"
   dedup_lanes=""
   # Direct mode sends nothing to a node, so nothing would be deduplicated.
@@ -192,6 +194,11 @@ validate_dedup_config() {
     ''|*[!0-9]*) echo "dedup memory_mib must be numeric" >&2; exit 1 ;;
   esac
   [ "$dedup_memory_mib" -ge 100 ] || { echo "dedup memory_mib must be at least 100" >&2; exit 1; }
+  case "$dedup_index_mib" in
+    '') ;;
+    *[!0-9]*) echo "dedup index_mib must be numeric" >&2; exit 1 ;;
+    *) [ "$dedup_index_mib" -ge 16 ] || { echo "dedup index_mib must be at least 16" >&2; exit 1; } ;;
+  esac
   case "$dedup_compress" in auto|huffman|off) ;; *) echo "unsupported dedup compress: $dedup_compress" >&2; exit 1 ;; esac
   [ -n "$dedup_domains" ] || { echo "dedup domains are required" >&2; exit 1; }
   for dl_domain in $dedup_domains; do

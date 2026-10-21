@@ -44,6 +44,7 @@ uci_get() {
     dedup.devices) printf '%s' "${dedup_devices_case-10.0.0.12 10.1.0.0/16}" ;;
     dedup.domains) printf '%s' "${dedup_domains_case-ChatGPT.com,api.openai.com}" ;;
     dedup.port) printf '%s' "$dedup_port_case" ;;
+    dedup.index_mib) printf '%s' "${dedup_index_case-}" ;;
     *) printf '%s' "$3" ;;
   esac
 }
@@ -103,6 +104,9 @@ PY2
 
 (dedup_port_case=10817; expect_fail "conflicts with another Stargate port")
 (dedup_devices_case="10.0.0.12;"; expect_fail "invalid dedup device")
+(dedup_index_case=540M; expect_fail "index_mib must be numeric")
+(dedup_index_case=8; expect_fail "index_mib must be at least 16")
+dedup_index_case=540 generate_config >/dev/null
 (dedup_domains_case="chatgpt"; expect_fail "invalid dedup domain")
 # Bad options do not matter while dedup is off.
 (dedup_enabled_case=0; dedup_port_case=x; generate_config >/dev/null)

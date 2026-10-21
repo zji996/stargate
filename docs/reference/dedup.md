@@ -40,6 +40,8 @@ Codex 这类客户端每一轮都会把整段对话历史重新上传。去重�
 
 ## 资源
 
+前端从 anytls-go `2bb41fe` 起每个请求预留 2 倍正文（此前 3 倍），预算不足时最多等 3 秒再原样转发；新内容在解码端应答前不被其他请求引用，帧丢失时撤销，避免整包重发。
+
 所有通道合计受 cgroup 内存上限约束，默认 300 MiB，超出时内核杀掉前端，不会杀 sing-box。前端崩溃后 1 秒内由 procd 拉起。前端参数变化时，新进程先启动，旧进程再继续接收 3 秒，期间不断流。
 
 ## 可选项
@@ -51,6 +53,7 @@ UCI `stargate.dedup` 段，一般不需要改：
 | `domains` | `chatgpt.com api.openai.com` | 接管的域名，含子域名；改动后需删除 `/etc/stargate/dedup` 让 CA 重建，设备重新信任 |
 | `port` | `10860` | 前端端口；加 1 是回程入站，加 2 是统计接口 |
 | `memory_mib` | `300` | 内存上限，索引和在途预算按比例缩放 |
+| `index_mib` | 空（按 `memory_mib` 缩放，300 时为 230） | 前端认为解码端持有的内容量，设为解码端 `cache-mib` 的约 90%；只存哈希，按实测平均块约 9 KiB 计约占 1/40，最坏 1/8 |
 | `compress` | `auto` | 新内容的压缩：`auto`、`huffman`（更省 CPU）或 `off`（只去重） |
 
 ## 2026-10-21：6.1 实机验收
@@ -87,4 +90,31 @@ UCI `stargate.dedup` 段，一般不需要改：
 
 WSL 系统 DNS 经 Windows 隧道返回过错误地址；直接查询路由器受管 DNS 能得到正常地址。透明 HTTPS 测试使用受管 DNS 结果，未修改 WSL/Windows DNS 设置。
 
-当前真实主出口与专用出口尚无解码端，因此实际 OpenAI 流量仍原样转发。生产出口部署、Sub2API CA 信任与业务灰度仍未进行。单前端和 CLI 的测试通过不等于生产去重已经生效。
+当时 6.1 的真实出口尚无解码端，实际 OpenAI 流量仍原样转发。生产启用见下节。
+
+## 2026-10-22：8.1 生产启用
+
+生产路由器（GL-MT6000，OpenWrt 24.10.0-rc2，sing-box 1.13.11），主节点与专用端口 `dmit-69` 都指向已部署解码端的 DMIT `69.63.200.32`。设备只选 Sub2API 主机，其 OpenAI OAuth 账号有直连（经透明代理）和经 `dmit-69` HTTP 端口两种，都进入 `main` 通道。
+
+部署：
+
+- 只增量上传前端二进制（Go 1.27.2，arm64）、`stargate-dedup` init、`dedup.sh` 及同步后的 `stargate.sh`、`lib/config.sh`、`lib/maintenance.sh`；LuCI 与远控组件未动。关闭状态下 `generate` 与运行配置逐字节相同。
+- 先用 `stargate-dedup ca` 生成 CA，设备信任后再 `on`，避免证书错误窗口。`/etc/stargate/dedup/` 已加入 `sysupgrade.conf`。
+
+设备侧 CA 自动同步（Sub2API 主机，Ubuntu 24.04）：
+
+- 叶子证书由前端签发，7 天有效、到期前一天自动重签，设备无需操作；CA 10 年有效，只在重刷、改域名或手动轮换时变化。
+- `stargate-dedup-ca-sync.timer` 开机 2 分钟及每小时运行 `/usr/local/sbin/stargate-dedup-ca-sync`：用 `/etc/stargate-dedup-ca/` 下的专用密钥和固定主机密钥取 CA。路由器 dropbear 对该密钥强制 `command="cat /etc/stargate/dedup/ca.pem"` 并禁止转发与 PTY，实测任意命令都只返回 CA、端口转发被拒。
+- 只接受单张、CA:TRUE、名称约束 critical 且恰为 `chatgpt.com api.openai.com` 的未过期证书；变化时写入 `/usr/local/share/ca-certificates/stargate-dedup.crt`、`update-ca-certificates` 并重启 `sub2api.service`（Go 只在启动时读取信任库）。取不到时保留现有证书。日志 `journalctl -t stargate-dedup-ca`。
+
+验收：
+
+- Sub2API 主机访问 `chatgpt.com` 证书由前端 CA 签发且校验通过；路由器本机代理端口来源得到原站证书。该主机透明、`dmit-69` 端口与路由器代理的出口地址一致。百度 200、Google 204。
+- 启用后约 2 分钟真实 Sub2API 流量：原文 `118234725` 字节、帧计数 `52690640` 字节，ratio 2.24，23 帧，`fallbacks`、`resets`、`misdelivered` 均为 0。帧计数不含 TLS/AnyTLS 开销。
+- 前端 cgroup 内存约 208 MiB / 300 MiB，OOM 为 0；需要继续观察高负载下是否逼近上限。
+
+已知问题：参数或二进制变化时新旧前端在同一 cgroup 内交接，上限仍是单个 `memory_mib`；新前端冷启动时字面量帧大，2026-10-22 实际被 cgroup OOM 杀掉一次（procd 1 秒拉起，在途请求断开）。
+
+升级前端并调整解码端大小用 `tools/dedup/upgrade.sh --router root@路由器 --server root@出口`：默认只预检并在路由器 `/tmp` 暂存校验（随后删除），`--apply` 先重启解码端再并行切换前端，两边缓存只冷启动一次，不重启 sing-box 与 anytls-server，失败按备份回滚。
+
+运维注意：`on`/`off` 会重启 Stargate。本次 02:09:55 重启时 Sub2API 在途请求遇到 `connection refused`/断流，4 个 OpenAI 账号被临时停调度 10 分钟，期间请求报无可用账号，手动恢复后正常。切换应避开高峰，或先在 Sub2API 暂停相关账号再切换。Chrome/Firefox 不使用系统信任库，在该主机上用浏览器访问这些域名会报证书错误。
