@@ -4,7 +4,8 @@ set -eu
 # stargate-dedup is anytls-go's cmd/dedup built from a pinned upstream commit;
 # Stargate keeps no copy of its source and never builds from third_party/.
 # godebug.go there only takes effect with Go 1.27 or newer; older toolchains
-# build a back whose TLS handshakes differ from a Go 1.27 client's.
+# build a back whose TLS handshakes differ from a Go 1.27 client's, so the
+# toolchain is pinned too (go downloads it when missing).
 repository=https://github.com/zji996/anytls-go.git
 commit=879f8803e731423289a2b6fef09126e23b9e2fa2
 base=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
@@ -21,6 +22,11 @@ git -C "$source" checkout -q FETCH_HEAD
   exit 1
 }
 cd "$source"
+export GOTOOLCHAIN="${GOTOOLCHAIN:-go1.27.2}"
+case "$(go env GOVERSION)" in
+  go1.2[7-9]*|go1.[3-9][0-9]*) ;;
+  *) echo "stargate-dedup needs Go 1.27 or newer, got $(go env GOVERSION)" >&2; exit 1 ;;
+esac
 for target in linux_arm64 linux_amd64; do
   mkdir -p "$output/$target"
   CGO_ENABLED=0 GOOS="${target%_*}" GOARCH="${target#*_}" go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$output/$target/stargate-dedup" ./cmd/dedup
