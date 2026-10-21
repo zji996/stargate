@@ -1,7 +1,8 @@
 #!/bin/sh
-# Upgrades a router's dedup front and resizes the decoder on its exit server
-# in one go. The decoder restarts first, then the front, so both caches start
-# cold once instead of twice. sing-box and anytls-server are not restarted.
+# Upgrades a router's dedup front and, with --server, resizes the decoder on
+# its exit server in one go. The decoder restarts first, then the front, so
+# both caches start cold once instead of twice. Without --server the decoder
+# and its cache are left alone. sing-box and anytls-server are not restarted.
 #
 # Dry run unless --apply: checks both ends and stages the files on the router
 # in /tmp (removed again), without touching configuration or services.
@@ -9,7 +10,9 @@ set -eu
 
 usage() {
   cat >&2 <<'USAGE'
-usage: tools/dedup/upgrade.sh --router root@ROUTER --server root@SERVER [options] [--apply]
+usage: tools/dedup/upgrade.sh --router root@ROUTER [--server root@SERVER] [options] [--apply]
+
+  --server HOST        also resize the decoder there; omit to upgrade the front only
 
   --index-mib N        front index, about 90% of the decoder cache (default 576)
   --cache-mib N        decoder cache (default 640)
@@ -38,7 +41,7 @@ while [ $# -gt 0 ]; do
     *) usage ;;
   esac
 done
-[ -n "$router" ] && [ -n "$server" ] || usage
+[ -n "$router" ] || usage
 for n in "$index_mib" "$cache_mib" "$inflight_mib" "$memory_max_mib"; do
   case "$n" in ''|*[!0-9]*) echo "sizes must be whole MiB: $n" >&2; exit 2 ;; esac
 done
@@ -60,7 +63,7 @@ on_server() { ssh $ssh_opts "$server" "$@"; }
 root_files="usr/share/stargate/dedup.sh usr/share/stargate/lib/config.sh etc/init.d/stargate-dedup"
 stage=/tmp/stargate-dedup-stage
 mode=$([ "$apply" = 1 ] && echo APPLY || echo DRY-RUN)
-echo "dedup upgrade ($mode): router $router, server $server"
+echo "dedup upgrade ($mode): router $router, server ${server:-(none, decoder left as is)}"
 
 # ---- router preflight ------------------------------------------------------
 step "router: preflight"
@@ -88,6 +91,9 @@ echo "   index_mib: $(uci -q get stargate.dedup.index_mib || echo '(unset)')"
 echo "   front: $(pgrep -f '^/usr/bin/stargate-dedup front' | wc -l) process(es), cgroup $(($(cat /sys/fs/cgroup/services/stargate-dedup/memory.current) >> 20)) MiB"
 echo "   memory available: $(awk '/MemAvailable/ {print int($2/1024)}' /proc/meminfo) MiB"
 EOF
+# The decoder the front answers to now; without --server it stays the same.
+old_epoch=$(on_router "/usr/share/stargate/dedup.sh status" | grep -o '"main": {[^}]*' | grep -o '"epoch": "[0-9a-f]*"' | cut -d'"' -f4)
+say "main lane decoder: ${old_epoch:-(none yet)}"
 changed=""
 for f in usr/bin/stargate-dedup $root_files; do
   if [ "$f" = usr/bin/stargate-dedup ]; then src=$bin; else src="$repo/luci-app-stargate/root/$f"; fi
@@ -124,6 +130,7 @@ on_router "sh -n $stage/dedup.sh && sh -n $stage/lib/config.sh && sh -n $stage/s
 say "staged and verified: checksums, shell syntax, binary runs on $arch"
 
 # ---- server preflight ------------------------------------------------------
+if [ -n "$server" ]; then
 step "server: preflight"
 on_server bash -s -- "$memory_max_mib" <<'EOF' || die "server is not in a state to resize"
 set -eu
@@ -145,11 +152,17 @@ curl -fsS --max-time 5 --unix-socket /run/anytls-dedup/admin.sock http://dedup/s
   { echo "decoder admin socket does not answer" >&2; exit 1; }
 echo "   anytls-server pid $(systemctl show anytls-server -p MainPID --value), decoder healthy"
 EOF
+fi
 
 step "plan"
-say "server: cache ${cache_mib} MiB, inflight ${inflight_mib} MiB, Go limit ${memory_mib} MiB, MemoryMax ${memory_max_mib} MiB; restart anytls-dedup only"
+if [ -n "$server" ]; then
+  say "server: cache ${cache_mib} MiB, inflight ${inflight_mib} MiB, Go limit ${memory_mib} MiB, MemoryMax ${memory_max_mib} MiB; restart anytls-dedup only"
+  say "caches start cold once: each conversation's next request is sent in full"
+else
+  say "server: untouched; the decoder keeps its cache"
+  say "the new front's index starts empty: each conversation's next request is sent in full"
+fi
 say "router: replace${changed:- nothing}; index_mib=${index_mib}; start the new front beside the old (3s linger, up to 30s drain)"
-say "caches start cold once: each conversation's next request is sent in full"
 
 if [ "$apply" != 1 ]; then
   on_router "rm -rf $stage"
@@ -160,6 +173,7 @@ fi
 ts=$(date -u +%Y%m%d-%H%M%S)
 
 # ---- server: resize and restart the decoder ---------------------------------
+if [ -n "$server" ]; then
 step "server: resize decoder"
 on_server bash -s -- "$ts" "$cache_mib" "$inflight_mib" "$memory_mib" "$memory_max_mib" <<'EOF' || die "server resize failed (restored)"
 set -eu
@@ -198,6 +212,7 @@ trap - ERR
 echo "   decoder restarted, $new_epoch, MemoryMax ${max} MiB; anytls-server pid $server_pid unchanged"
 echo "   backup: $backup"
 EOF
+fi
 
 # ---- router: swap the front ---------------------------------------------------
 step "router: upgrade front"
@@ -242,7 +257,11 @@ EOF
 
 # ---- verify --------------------------------------------------------------------
 step "verify"
-epoch=$(on_server "curl -fsS --unix-socket /run/anytls-dedup/admin.sock http://dedup/stats" | grep -o '"epoch":"[0-9a-f]*"' | cut -d'"' -f4)
+if [ -n "$server" ]; then
+  epoch=$(on_server "curl -fsS --unix-socket /run/anytls-dedup/admin.sock http://dedup/stats" | grep -o '"epoch":"[0-9a-f]*"' | cut -d'"' -f4)
+else
+  epoch=$old_epoch
+fi
 for _ in $(seq 30); do
   on_router "/usr/share/stargate/dedup.sh status" | grep -q "\"main\": {[^}]*\"epoch\": \"$epoch\"" && break
   sleep 2
