@@ -6,7 +6,7 @@ Codex 这类客户端每一轮都会把整段对话历史重新上传。去重�
 
 ## 组成
 
-- 路由器：`stargate-dedup` 前端，代码在 `tools/dedup`，与 anytls-go `cmd/dedup` 保持一致，由 `/etc/init.d/stargate-dedup` 管理。
+- 路由器：`stargate-dedup` 前端，即 anytls-go 的 `cmd/dedup`。Stargate 不保存其源码：`sh tools/dedup/build.sh` 从 `zji996/anytls-go` 的固定提交拉取并构建到 `.local/dedup-build/`，不使用 `third_party/`；升级时修改脚本里的提交。由 `/etc/init.d/stargate-dedup` 管理，LuCI 包不带该二进制。
 - 出口服务器：anytls-go 的 `dedup back` 解码端，加上带 `-dedup-backend` 参数的 anytls-server。没有解码端的节点照常工作，前端对它们原样转发。
 
 ## 开关

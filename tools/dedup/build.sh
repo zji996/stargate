@@ -1,15 +1,28 @@
 #!/bin/sh
 set -eu
 
-# godebug.go only takes effect with Go 1.27 or newer; older toolchains build a
-# back whose TLS handshakes differ from a Go 1.27 client's.
+# stargate-dedup is anytls-go's cmd/dedup built from a pinned upstream commit;
+# Stargate keeps no copy of its source and never builds from third_party/.
+# godebug.go there only takes effect with Go 1.27 or newer; older toolchains
+# build a back whose TLS handshakes differ from a Go 1.27 client's.
+repository=https://github.com/zji996/anytls-go.git
+commit=879f8803e731423289a2b6fef09126e23b9e2fa2
 base=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 output=${1:-"$base/../../.local/dedup-build"}
 mkdir -p "$output"
 output=$(CDPATH='' cd -- "$output" && pwd)
-cd "$base"
+source=$(mktemp -d)
+trap 'rm -rf "$source"' EXIT
+git -C "$source" init -q
+git -C "$source" fetch -q --depth 1 "$repository" "$commit"
+git -C "$source" checkout -q FETCH_HEAD
+[ "$(git -C "$source" rev-parse HEAD)" = "$commit" ] || {
+  echo "fetched anytls-go does not match $commit" >&2
+  exit 1
+}
+cd "$source"
 for target in linux_arm64 linux_amd64; do
   mkdir -p "$output/$target"
-  CGO_ENABLED=0 GOOS="${target%_*}" GOARCH="${target#*_}" go build -trimpath -ldflags='-s -w' -o "$output/$target/stargate-dedup" .
+  CGO_ENABLED=0 GOOS="${target%_*}" GOARCH="${target#*_}" go build -trimpath -buildvcs=false -ldflags='-s -w' -o "$output/$target/stargate-dedup" ./cmd/dedup
 done
-printf 'Built stargate-dedup in %s\n' "$output"
+printf 'Built stargate-dedup %s in %s\n' "$(printf '%s' "$commit" | cut -c1-12)" "$output"

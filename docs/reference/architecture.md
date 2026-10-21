@@ -38,6 +38,7 @@ PassWall2 功能很完整，但它同时管理订阅、DNS、FakeDNS、透明代
 - `luci-app-stargate/`：第一版 OpenWrt LuCI 管理前端包，负责 UCI 配置、页面、服务入口和配置生成后端。LuCI 后端统一入口是 `root/usr/share/stargate/stargate.sh`，具体实现按 common、nodes、rules、config、firewall、maintenance 拆到 `root/usr/share/stargate/lib/*.sh`。
 - `manage.sh`：本地开发检查入口，只做命令路由。
 - `tools/remote-access/`：显式安装的 AnyTLS 远程访问组件，包含控制端、映射同步程序、frp 集成与独立服务安装器。
+- `tools/dedup/build.sh`：从固定的 anytls-go 上游提交构建去重前端 `stargate-dedup`，仓库不保存其源码。开关见 [去重加速](dedup.md)。
 - `examples/anytls.json`：结构化节点配置方向示例。
 - `docs/current.md`：当前协作上下文。
 - `docs/roadmap.md`：未来方向。
