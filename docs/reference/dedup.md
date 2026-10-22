@@ -117,6 +117,8 @@ WSL 系统 DNS 经 Windows 隧道返回过错误地址；直接查询路由器�
 
 首连透传：前端的通道由首个连接创建、后台探测，因此首个连接总被原样转发；客户端长期复用的 HTTP/2 连接会整条绕过去重，8.1 曾因此约 58% 的请求未经去重。anytls-go `169a009` 起首个连接最多等待 3 秒的首次探测，已发现解码端的通道在其暂时不可达时继续拦截、逐请求直发 origin。核对覆盖率可对比前端 `framed`+`plain` 与 Sub2API `/responses` 数，并确认 `passed_conns` 不增长。
 
-升级前端用 `tools/dedup/upgrade.sh --router root@路由器`，加 `--server root@出口` 时同时调整解码端大小：默认只预检并在路由器 `/tmp` 暂存校验（随后删除），`--apply` 先重启解码端再并行切换前端，两边缓存只冷启动一次，不重启 sing-box 与 anytls-server，失败按备份回滚。
+解码连接存活：anytls-go `f239e43` 起，解码端同时接受 HTTP/1 与不加密 HTTP/2，并在 `/health` 带 `X-Edge-Dedup-H2c: 1`；前端看到后经 SOCKS5 出口改用一条 HTTP/2 连接，两端 15 秒无帧即 ping，链路静默约 30 秒内失败、改发原文。此前 HTTP/1 连接遇到只丢大包的出口 TCP 连接，会等内核重传超时（约 15 分钟）。旧前端与新解码端、新前端与旧解码端均保持 HTTP/1，升级时先换解码端。
+
+升级前端用 `tools/dedup/upgrade.sh --router root@路由器`，加 `--server root@出口` 时同时调整解码端大小，再加 `--decoder` 时在同一步把出口的 `/usr/local/bin/anytls-dedup` 换成本次构建（失败回滚，并校验健康检查声明 HTTP/2）：默认只预检并在路由器 `/tmp` 暂存校验（随后删除），`--apply` 先重启解码端再并行切换前端，两边缓存只冷启动一次，不重启 sing-box 与 anytls-server，失败按备份回滚。
 
 运维注意：`on`/`off` 会重启 Stargate。本次 02:09:55 重启时 Sub2API 在途请求遇到 `connection refused`/断流，4 个 OpenAI 账号被临时停调度 10 分钟，期间请求报无可用账号，手动恢复后正常。切换应避开高峰，或先在 Sub2API 暂停相关账号再切换。Chrome/Firefox 不使用系统信任库，在该主机上用浏览器访问这些域名会报证书错误。

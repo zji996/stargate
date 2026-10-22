@@ -1,6 +1,7 @@
 #!/bin/sh
 # Upgrades a router's dedup front and, with --server, resizes the decoder on
-# its exit server in one go. The decoder restarts first, then the front, so
+# its exit server in one go; with --decoder as well, the decoder program there
+# is replaced by the same build. The decoder restarts first, then the front, so
 # both caches start cold once instead of twice. Without --server the decoder
 # and its cache are left alone. sing-box and anytls-server are not restarted.
 #
@@ -13,6 +14,8 @@ usage() {
 usage: tools/dedup/upgrade.sh --router root@ROUTER [--server root@SERVER] [options] [--apply]
 
   --server HOST        also resize the decoder there; omit to upgrade the front only
+  --decoder            with --server: also replace the decoder program with this
+                       build (install it before a front that relies on it)
 
   --index-mib N        front index, about 90% of the decoder cache (default 576)
   --cache-mib N        decoder cache (default 640)
@@ -25,13 +28,14 @@ USAGE
 }
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
-router="" server="" apply=0
+router="" server="" decoder=0 apply=0
 index_mib=576 cache_mib=640 inflight_mib=128 memory_max_mib=1024
 build="$repo/.local/dedup-build"
 while [ $# -gt 0 ]; do
   case "$1" in
     --router) router=$2; shift 2 ;;
     --server) server=$2; shift 2 ;;
+    --decoder) decoder=1; shift ;;
     --index-mib) index_mib=$2; shift 2 ;;
     --cache-mib) cache_mib=$2; shift 2 ;;
     --inflight-mib) inflight_mib=$2; shift 2 ;;
@@ -42,6 +46,7 @@ while [ $# -gt 0 ]; do
   esac
 done
 [ -n "$router" ] || usage
+[ "$decoder" = 0 ] || [ -n "$server" ] || { echo "--decoder needs --server" >&2; exit 2; }
 for n in "$index_mib" "$cache_mib" "$inflight_mib" "$memory_max_mib"; do
   case "$n" in ''|*[!0-9]*) echo "sizes must be whole MiB: $n" >&2; exit 2 ;; esac
 done
@@ -60,6 +65,7 @@ die() { printf 'ERROR: %s\n' "$*" >&2; exit 1; }
 on_router() { ssh $ssh_opts "$router" "$@"; }
 on_server() { ssh $ssh_opts "$server" "$@"; }
 
+server_stage=/tmp/anytls-dedup.stage
 root_files="usr/share/stargate/dedup.sh usr/share/stargate/lib/config.sh etc/init.d/stargate-dedup"
 stage=/tmp/stargate-dedup-stage
 mode=$([ "$apply" = 1 ] && echo APPLY || echo DRY-RUN)
@@ -152,11 +158,29 @@ curl -fsS --max-time 5 --unix-socket /run/anytls-dedup/admin.sock http://dedup/s
   { echo "decoder admin socket does not answer" >&2; exit 1; }
 echo "   anytls-server pid $(systemctl show anytls-server -p MainPID --value), decoder healthy"
 EOF
+if [ "$decoder" = 1 ]; then
+  case "$(on_server uname -m)" in
+    aarch64) server_bin="$build/linux_arm64/stargate-dedup" ;;
+    x86_64) server_bin="$build/linux_amd64/stargate-dedup" ;;
+    *) die "unsupported server architecture" ;;
+  esac
+  [ -x "$server_bin" ] || die "missing $server_bin; run sh tools/dedup/build.sh"
+  on_server "cat > $server_stage && chmod 755 $server_stage" <"$server_bin"
+  [ "$(on_server "sha256sum $server_stage | cut -d' ' -f1")" = "$(sha256sum <"$server_bin" | cut -d' ' -f1)" ] ||
+    die "staged decoder does not match"
+  on_server "$server_stage back -h 2>&1 | grep -q inflight-mib" || die "staged decoder does not run on the server"
+  if [ "$(on_server "sha256sum /usr/local/bin/anytls-dedup | cut -d' ' -f1")" = "$(sha256sum <"$server_bin" | cut -d' ' -f1)" ]; then
+    say "decoder program unchanged"
+  else
+    say "decoder program staged and verified: $(sha256sum "$server_bin" | cut -c1-16)"
+  fi
+fi
 fi
 
 step "plan"
 if [ -n "$server" ]; then
   say "server: cache ${cache_mib} MiB, inflight ${inflight_mib} MiB, Go limit ${memory_mib} MiB, MemoryMax ${memory_max_mib} MiB; restart anytls-dedup only"
+  [ "$decoder" = 0 ] || say "server: replace /usr/local/bin/anytls-dedup with this build"
   say "caches start cold once: each conversation's next request is sent in full"
 else
   say "server: untouched; the decoder keeps its cache"
@@ -166,6 +190,7 @@ say "router: replace${changed:- nothing}; index_mib=${index_mib}; start the new 
 
 if [ "$apply" != 1 ]; then
   on_router "rm -rf $stage"
+  [ "$decoder" = 0 ] || on_server "rm -f $server_stage"
   printf '\nDry run complete; nothing was changed. Run again with --apply.\n'
   exit 0
 fi
@@ -175,18 +200,19 @@ ts=$(date -u +%Y%m%d-%H%M%S)
 # ---- server: resize and restart the decoder ---------------------------------
 if [ -n "$server" ]; then
 step "server: resize decoder"
-on_server bash -s -- "$ts" "$cache_mib" "$inflight_mib" "$memory_mib" "$memory_max_mib" <<'EOF' || die "server resize failed (restored)"
+on_server bash -s -- "$ts" "$cache_mib" "$inflight_mib" "$memory_mib" "$memory_max_mib" "$([ "$decoder" = 1 ] && echo "$server_stage")" <<'EOF' || die "server resize failed (restored)"
 set -eu
-ts=$1 cache=$2 inflight=$3 memory=$4 max=$5
+ts=$1 cache=$2 inflight=$3 memory=$4 max=$5 program=$6
 backup=/root/anytls-dedup-resize-$ts
 mkdir -p "$backup"
-cp -p /etc/anytls/dedup.env /etc/systemd/system/anytls-dedup.service "$backup/"
+cp -p /etc/anytls/dedup.env /etc/systemd/system/anytls-dedup.service /usr/local/bin/anytls-dedup "$backup/"
 server_pid=$(systemctl show anytls-server -p MainPID --value)
 old_epoch=$(curl -fsS --unix-socket /run/anytls-dedup/admin.sock http://dedup/stats | grep -o '"epoch":"[0-9a-f]*"')
 restore() {
   echo "   restoring from $backup" >&2
   cp -p "$backup/dedup.env" /etc/anytls/dedup.env
   cp -p "$backup/anytls-dedup.service" /etc/systemd/system/anytls-dedup.service
+  cp -p "$backup/anytls-dedup" /usr/local/bin/anytls-dedup.new && mv -f /usr/local/bin/anytls-dedup.new /usr/local/bin/anytls-dedup
   systemctl daemon-reload
   systemctl restart anytls-dedup
 }
@@ -196,6 +222,11 @@ sed -i -e "s/^ANYTLS_DEDUP_CACHE_MIB=.*/ANYTLS_DEDUP_CACHE_MIB=$cache/" \
   -e "s/^ANYTLS_DEDUP_MEMORY_MIB=.*/ANYTLS_DEDUP_MEMORY_MIB=$memory/" \
   -e "s/^ANYTLS_DEDUP_MEMORY_MAX_MIB=.*/ANYTLS_DEDUP_MEMORY_MAX_MIB=$max/" /etc/anytls/dedup.env
 sed -i "s/^MemoryMax=.*/MemoryMax=${max}M/" /etc/systemd/system/anytls-dedup.service
+if [ -n "$program" ]; then
+  cp "$program" /usr/local/bin/anytls-dedup.new
+  chmod 755 /usr/local/bin/anytls-dedup.new
+  mv -f /usr/local/bin/anytls-dedup.new /usr/local/bin/anytls-dedup
+fi
 systemctl daemon-reload
 [ "$(systemctl show anytls-dedup -p MemoryMax --value)" = "$((max * 1024 * 1024))" ]
 systemctl restart anytls-dedup
@@ -208,6 +239,12 @@ new_epoch=$(printf '%s' "$stats" | grep -o '"epoch":"[0-9a-f]*"')
 [ -n "$new_epoch" ] && [ "$new_epoch" != "$old_epoch" ]
 ps -o args= -p "$(systemctl show anytls-dedup -p MainPID --value)" | grep -q -- "-cache-mib $cache "
 [ "$(systemctl show anytls-server -p MainPID --value)" = "$server_pid" ]
+if [ -n "$program" ]; then
+  # The new decoder offers HTTP/2 to fronts on its health check.
+  curl -fsS -o /dev/null -D - --max-time 5 --unix-socket /run/anytls-dedup/back.sock http://dedup.anytls.arpa/health |
+    grep -qi '^x-edge-dedup-h2c: 1'
+  rm -f "$program"
+fi
 trap - ERR
 echo "   decoder restarted, $new_epoch, MemoryMax ${max} MiB; anytls-server pid $server_pid unchanged"
 echo "   backup: $backup"
