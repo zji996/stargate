@@ -65,6 +65,15 @@
       "path": "stargate/advanced"
     }
   },
+  "admin/services/stargate/dedup": {
+    "title": "Deduplication",
+    "translate": "stargate",
+    "order": 52,
+    "action": {
+      "type": "form",
+      "path": "stargate/client/dedup"
+    }
+  },
   "admin/services/stargate/remote": {
     "title": "Remote access",
     "translate": "stargate",

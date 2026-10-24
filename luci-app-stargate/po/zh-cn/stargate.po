@@ -894,3 +894,6 @@ msgstr "启用"
 
 msgid "Disable"
 msgstr "停用"
+
+msgid "Deduplication"
+msgstr "去重编解码"

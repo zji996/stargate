@@ -1,0 +1,26 @@
+<%
+local pc = require("luci.util").pcdata
+local text = require("luci.model.stargate.common").ui_text
+%>
+<style>
+#stargate-dedup{max-width:960px;margin:auto;min-width:0}
+#stargate-dedup label{display:block;margin:16px 0 6px}
+#stargate-dedup textarea{box-sizing:border-box;width:100%;max-width:100%;min-height:90px}
+#stargate-dedup pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto}
+#stargate-dedup p{overflow-wrap:anywhere}
+</style>
+<div id="stargate-dedup">
+  <p><%=text("Only selected devices and target domains use TLS interception and upload deduplication. Other traffic keeps its existing proxy route.", "仅对所选设备访问目标域名时使用自签证书和上传去重；其他流量保持原代理分流。")%></p>
+  <% if self.dedup_message then %><pre role="status"><%=pc(self.dedup_message)%></pre><% end %>
+  <label for="dedup-enabled"><input id="dedup-enabled" name="dedup_enabled" type="checkbox" value="1"<% if self.dedup_enabled then %> checked<% end %>> <%=text("Enable deduplication", "启用去重编解码")%></label>
+  <label for="dedup-devices"><%=text("Devices (IP addresses or networks)", "设备（IP 地址或网段）")%></label>
+  <textarea id="dedup-devices" name="dedup_devices" maxlength="4096" spellcheck="false"><%=pc(self.dedup_devices)%></textarea>
+  <label for="dedup-targets"><%=text("Target domains", "目标域名")%></label>
+  <textarea id="dedup-targets" name="dedup_targets" maxlength="4096" spellcheck="false"><%=pc(self.dedup_targets)%></textarea>
+  <p><%=text("Separate entries with spaces or newlines; domains include subdomains. Remove chatgpt.com here to stop its TLS interception and encoding. Keep api.openai.com if API traffic should still use deduplication.", "每行一个，也可用空格分隔；域名包含其子域名。移除 chatgpt.com 即停止该网站的自签和编码；如需继续处理 API，可保留 api.openai.com。")%></p>
+  <p><%=text("Targets must be within the existing CA scope; narrowing them preserves the trusted certificate:", "目标须在现有 CA 范围内，收窄目标无需重新安装证书：")%> <strong><%=pc(self.dedup_domains)%></strong></p>
+  <p><%=text("Selected devices must trust the CA before enabling. Applying changes may briefly disconnect proxy connections.", "启用前，所选设备须已信任 CA。应用更改可能短暂中断代理连接。")%></p>
+  <button type="submit" name="stargate_dedup_action" value="configure" class="cbi-button cbi-button-apply"><%=text("Apply deduplication settings", "应用编解码设置")%></button>
+  <h3><%=text("Current status", "当前状态")%></h3>
+  <pre id="dedup-status"><%=pc(self.dedup_status)%></pre>
+</div>
