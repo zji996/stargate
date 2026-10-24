@@ -17,6 +17,8 @@ usage() {
 Usage:
   /usr/share/stargate/dedup.sh on [device ...]  turn on, for these devices (IP or CIDR) if given
   /usr/share/stargate/dedup.sh off              turn off
+  /usr/share/stargate/dedup.sh configure <0|1> "devices" "targets"
+                                              apply the switch, devices and target domains together
   /usr/share/stargate/dedup.sh status
   /usr/share/stargate/dedup.sh ca               print the CA certificate the devices must trust
 USAGE
@@ -106,6 +108,8 @@ snapshot_switch() {
   if old_enabled="$(uci_cmd get "$app.dedup.enabled")"; then old_enabled_set=1; fi
   old_devices_set=0
   if old_devices="$(uci_cmd get "$app.dedup.devices")"; then old_devices_set=1; fi
+  old_targets_set=0
+  if old_targets="$(uci_cmd get "$app.dedup.targets")"; then old_targets_set=1; fi
   old_init_enabled=0
   "$dedup_init" enabled && old_init_enabled=1
   old_front_running=0
@@ -120,10 +124,11 @@ restore_switch() {
       uci_cmd delete "$app.dedup" || return 1
     fi
   else
-    for option in enabled devices; do
+    for option in enabled devices targets; do
       case "$option" in
         enabled) value="$old_enabled"; was_set="$old_enabled_set" ;;
         devices) value="$old_devices"; was_set="$old_devices_set" ;;
+        targets) value="$old_targets"; was_set="$old_targets_set" ;;
       esac
       if [ "$was_set" = 1 ]; then
         uci_cmd set "$app.dedup.$option=$value" || return 1
@@ -176,6 +181,7 @@ dedup_on() {
   [ "$(bool_value "$(uci_get global enabled 0)")" = 1 ] || die "Stargate is not running; start it first"
   [ -x "$dedup_bin" ] || die "dedup front missing: $dedup_bin (build it with tools/dedup/build.sh)"
   devices="${*:-$old_devices}"
+  devices="$(printf '%s' "$devices" | tr ',\t\n' '   ' | awk '{$1=$1; print}')"
   [ -n "$devices" ] || die "which devices? e.g. dedup.sh on 10.0.0.12"
   [ "$(uci_get rules mode blacklist)" != direct ] || die "direct mode sends nothing to a node; nothing to deduplicate"
 
@@ -209,9 +215,35 @@ dedup_off() {
   save_switch 0 "$(uci_get dedup devices '')"
   [ "$(bool_value "$(uci_get global enabled 0)")" != 1 ] || apply_steering
   front_touched=1
-  "$dedup_init" stop
+  if ! stop_output="$("$dedup_init" stop 2>&1)"; then
+    # procd returns "Not found" after an already stopped service was removed.
+    if "$dedup_init" status >/dev/null 2>&1 || listening "$(uci_get dedup port 10860)"; then
+      printf '%s\n' "$stop_output" >&2
+      return 1
+    fi
+  fi
   "$dedup_init" disable
   echo "dedup off"
+}
+
+dedup_configure() {
+  [ "$#" = 3 ] || die 'configure requires: <0|1> "devices" "targets"'
+  case "$1" in 0|1) ;; *) die 'enabled must be 0 or 1' ;; esac
+  configured_devices="$(printf '%s' "$2" | tr ',\t\n' '   ' | awk '{$1=$1; print}')"
+  save_switch "$1" "$configured_devices"
+  # UCI drops empty scalar options on commit. Keep an explicit no-target
+  # marker so a later read cannot fall back to the legacy domain defaults.
+  targets="$3"
+  case "$targets" in *[![:space:],]*) ;; *) targets=none ;; esac
+  uci_cmd set "$app.dedup.targets=$targets"
+  uci_commit
+  (load_front_config) || return 1
+  if [ "$1" = 1 ]; then
+    [ -n "$configured_devices" ] || die 'devices are required when enabling dedup'
+    dedup_on "$configured_devices"
+  else
+    dedup_off
+  fi
 }
 
 dedup_status() {
@@ -221,6 +253,7 @@ dedup_status() {
   front=down
   ! listening "$dedup_port" || front=up
   printf 'switch: %s\ndevices: %s\ndomains: %s\n' "$([ "$dedup_enabled" = 1 ] && echo on || echo off)" "${dedup_devices:-none}" "$dedup_domains"
+  printf 'targets: %s\n' "${dedup_targets:-none}"
   printf 'front: %s\nsteering in sing-box: %s\n' "$front" "$steering"
   [ -f "$dedup_ca_dir/ca.pem" ] && printf 'ca: %s\n' "$dedup_ca_dir/ca.pem" || printf 'ca: none\n'
   [ "$front" = up ] || return 0
@@ -237,6 +270,7 @@ action="${1:-}"
 case "$action" in
   on) switch_transaction dedup_on "$@" ;;
   off) switch_transaction dedup_off ;;
+  configure) switch_transaction dedup_configure "$@" ;;
   status) dedup_status ;;
   ca) cat "$dedup_ca_dir/ca.pem" ;;
   front) print_front ;;

@@ -43,6 +43,7 @@ uci_get() {
     dedup.enabled) printf '%s' "$dedup_enabled_case" ;;
     dedup.devices) printf '%s' "${dedup_devices_case-10.0.0.12 10.1.0.0/16}" ;;
     dedup.domains) printf '%s' "${dedup_domains_case-ChatGPT.com,api.openai.com}" ;;
+    dedup.targets) printf '%s\n' "${dedup_targets_case-$3}" ;;
     dedup.port) printf '%s' "$dedup_port_case" ;;
     dedup.index_mib) printf '%s' "${dedup_index_case-}" ;;
     *) printf '%s' "$3" ;;
@@ -67,9 +68,14 @@ cp "$(generate_config)" "$test_dir/on.json"
 cp "$(dedup_enabled_case=0 generate_config)" "$test_dir/off.json"
 cp "$(test_mode=direct generate_config)" "$test_dir/direct.json"
 cp "$(dedup_devices_case='' generate_config)" "$test_dir/nodevices.json"
+cp "$(dedup_targets_case='api.openai.com' generate_config)" "$test_dir/api-only.json"
 python3 - "$test_dir" <<'PY2'
 import json, sys
 d = sys.argv[1]
+api_only = json.load(open(f"{d}/api-only.json"))
+targets = [r["domain_suffix"] for r in api_only["route"]["rules"]
+           if r.get("outbound", "").startswith("dedup-out-")]
+assert targets and all(t == ["api.openai.com"] for t in targets), targets
 for name in ("off", "direct", "nodevices"):
     assert "dedup" not in open(f"{d}/{name}.json").read(), name
 
@@ -108,5 +114,11 @@ PY2
 (dedup_index_case=8; expect_fail "index_mib must be at least 16")
 dedup_index_case=540 generate_config >/dev/null
 (dedup_domains_case="chatgpt"; expect_fail "invalid dedup domain")
+(dedup_targets_case="evilchatgpt.com"; expect_fail "target must be within the CA domains")
+(dedup_targets_case="api.openai.com;"; expect_fail "target must be within the CA domains")
+(dedup_targets_case=""; expect_fail "targets are required")
+(dedup_targets_case=none; expect_fail "targets are required")
+(dedup_targets_case=none; dedup_enabled_case=0; generate_config >/dev/null)
+dedup_targets_case=www.chatgpt.com generate_config >/dev/null
 # Bad options do not matter while dedup is off.
 (dedup_enabled_case=0; dedup_port_case=x; generate_config >/dev/null)

@@ -168,6 +168,13 @@ load_dedup_config() {
   dedup_enabled="$(bool_value "$(uci_get dedup enabled 0)")"
   dedup_devices="$(uci_get dedup devices '' | tr ',\t\n' '   ')"
   dedup_domains="$(uci_get dedup domains 'chatgpt.com api.openai.com' | tr 'A-Z,\t\n' 'a-z   ')"
+  # Targets may narrow the CA's existing domain scope without rotating it.
+  dedup_targets="$(uci_get dedup targets "$dedup_domains")"
+  if [ "$dedup_targets" = none ]; then
+    dedup_targets=""
+  else
+    dedup_targets="$(printf '%s' "$dedup_targets" | tr 'A-Z,\t\n' 'a-z   ')"
+  fi
   dedup_port="$(uci_get dedup port 10860)"
   dedup_memory_mib="$(uci_get dedup memory_mib 300)"
   # Empty: sized with memory_mib. Set it to about 90% of the decoder's cache.
@@ -210,6 +217,19 @@ validate_dedup_config() {
   for dl_device in $dedup_devices; do
     printf '%s\n' "$dl_device" | grep -Eq '^[0-9A-Fa-f:.]+(/[0-9]{1,3})?$' || {
       echo "invalid dedup device (want an IP or CIDR): $dl_device" >&2
+      exit 1
+    }
+  done
+  [ "$dedup_enabled" != 1 ] || [ -n "$dedup_targets" ] || {
+    echo "dedup targets are required (use off to disable)" >&2; exit 1
+  }
+  for dl_target in $dedup_targets; do
+    dl_allowed=0
+    for dl_domain in $dedup_domains; do
+      case "$dl_target" in "$dl_domain"|*."$dl_domain") dl_allowed=1 ;; esac
+    done
+    printf '%s\n' "$dl_target" | grep -Eq '^[a-z0-9-]+(\.[a-z0-9-]+)+$' && [ "$dl_allowed" = 1 ] || {
+      echo "dedup target must be within the CA domains: $dl_target" >&2
       exit 1
     }
   done
@@ -273,7 +293,7 @@ write_dedup_route_rules() {
     add_rule "{ \"inbound\": [\"dedup-in\"], \"auth_user\": [\"$dl_lane\"], \"outbound\": \"$(dedup_lane_out "$dl_lane")\" }"
   done
   add_rule '{ "inbound": ["dedup-in"], "action": "reject" }'
-  dl_match="\"network\": \"tcp\", \"port\": 443, \"source_ip_cidr\": [$(json_words "$dedup_devices")], \"domain_suffix\": [$(json_words "$dedup_domains")]"
+  dl_match="\"network\": \"tcp\", \"port\": 443, \"source_ip_cidr\": [$(json_words "$dedup_devices")], \"domain_suffix\": [$(json_words "$dedup_targets")]"
   for dl_lane in $dedup_lanes; do
     dl_inbounds="$(dedup_lane_inbounds "$dl_lane")"
     [ -n "$dl_inbounds" ] || continue

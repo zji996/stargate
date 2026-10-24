@@ -65,7 +65,8 @@ generate_config() {
   uci_get dedup enabled 0 > "$LAB_ROOT/next"
   printf '%s\n' "$LAB_ROOT/next"
 }
-switch_transaction "dedup_$1" ${2+"$2"}
+command="$1"; shift
+switch_transaction "dedup_$command" "$@"
 RUNNER
 chmod +x "$LAB_ROOT/init" "$LAB_ROOT/stargate.sh" "$LAB_ROOT/stargate-init"
 reset_case() {
@@ -98,6 +99,12 @@ run_ok on
 assert_state 1
 run_ok on
 [ "$(wc -l < "$LAB_ROOT/applies")" -eq 1 ]
+run_ok off
+assert_state 0
+run_ok off
+assert_state 0
+# Already absent from procd: stop may fail while there is nothing to stop.
+touch "$LAB_ROOT/fail-stop"
 run_ok off
 assert_state 0
 # Fail before steering, including CA creation and a missing original section.
@@ -142,4 +149,32 @@ reset_case 1
 touch "$LAB_ROOT/fail-stop"
 run_fail off
 assert_state 1
+# Configure applies devices and targets together, restoring even target absence.
+reset_case 1
+run_ok configure 1 192.0.2.2 api.openai.com
+assert_state 1
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.devices")" = 192.0.2.2 ]
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.targets")" = api.openai.com ]
+touch "$LAB_ROOT/fail-start"
+run_fail configure 1 192.0.2.3 chatgpt.com
+assert_state 1
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.devices")" = 192.0.2.2 ]
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.targets")" = api.openai.com ]
+reset_case 0
+touch "$LAB_ROOT/fail-apply"
+run_fail configure 1 192.0.2.2 api.openai.com
+assert_state 0
+[ ! -f "$LAB_ROOT/uci/stargate.dedup.targets" ]
+reset_case 1
+run_ok configure 0 192.0.2.3 api.openai.com
+assert_state 0
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.devices")" = 192.0.2.3 ]
+run_ok configure 0 '' ''
+assert_state 0
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.devices")" = '' ]
+[ "$(cat "$LAB_ROOT/uci/stargate.dedup.targets")" = none ]
+run_fail configure 1 '' api.openai.com
+assert_state 0
+run_fail configure 1 ' , ' api.openai.com
+assert_state 0
 printf 'dedup switch: all transaction checks passed\n'
