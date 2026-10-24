@@ -6,6 +6,12 @@
 
 用户额外授权 AnyTLS 远程访问组件：路由器提供内网端口，macOS 作为访问端，经既有 DMIT AnyTLS 中转。组件独立安装与配置，主代理保持 sing-box；frp 只承担明确授权的 STCP 映射。
 
+## 2026-10-23 更新
+
+- 按用户要求在 `root@192.168.6.1` 关闭去重编解码，清空设备和目标（UCI `enabled=0`、`targets=none`），同时排除 `chatgpt.com` 与 `api.openai.com`；保留 CA，后续再自行设置目标。前端已停止且禁用自启，运行配置仅移除了去重入站、出站和导流规则，普通代理与透明转发继续运行。两个域名均从 `192.168.6.229` 实测拿到 Google Trust Services 原站证书且 TLS 校验通过，百度 200、Google 204。
+- 新增 LuCI **去重编解码** 页及 `dedup.sh configure` 事务入口，支持开关、设备和目标；目标可在现有 CA 域名范围内收窄，无需更换证书，空目标显式持久化。只更新 Stargate 的页面和相关脚本，没有升级固件或系统 LuCI 包。备份为 `/root/stargate-dedup-ui-backup-20261023-033258/`。
+- 实机浏览器覆盖桌面/手机布局、空目标保存、非法设备、缺少目标时回滚与 CSRF 拒绝；验证期间配置哈希和 sing-box PID 保持一致。统一检查 `sh manage.sh check` 通过。
+
 ## 2026-10-22 更新
 
 - 用户授权在生产路由器 `192.168.8.1` 启用去重，只选择 Sub2API 主机 `192.168.8.12`，域名默认、`compress=auto`。DMIT `69.63.200.32` 的解码端由用户先行部署，前端发现其 epoch `b5f0e9f9…`。记录见 [去重加速](reference/dedup.md)。

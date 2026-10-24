@@ -11,6 +11,7 @@
 - DNS：直连 TCP DNS + 远端 DoH 的基础组合。
 - Rules：基于 Loyalsoldier 基础规则的黑名单/白名单分流，并支持少量用户直连/代理域名覆盖。
 - Advanced：透明代理转发配置，集中放置会写 nftables/iptables 的应用和清理动作。
+- Deduplication：去重编解码开关、设备（IP/网段）、目标域名和运行状态；收窄目标保留现有 CA，通过独立事务入口应用。二进制仍须单独安装，详见 [去重加速](dedup.md)。
 - Maintenance：分为 `sing-box 设置` 和 `备份还原` 两块；前者保留 sing-box 执行文件路径和未来组件升级占位，后者参考 PassWall2 体验提供备份还原、恢复默认配置和生成配置回滚。
 - Logs：最近的 Stargate 和 sing-box 日志。
 

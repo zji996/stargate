@@ -16,11 +16,17 @@ Codex 这类客户端每一轮都会把整段对话历史重新上传。去重�
 /usr/share/stargate/dedup.sh off            # 关闭
 /usr/share/stargate/dedup.sh status         # 开关、前端、压缩率
 /usr/share/stargate/dedup.sh ca             # 打印设备需要信任的 CA 证书
+/usr/share/stargate/dedup.sh configure 1 '10.0.0.12' 'api.openai.com'
+/usr/share/stargate/dedup.sh configure 0 '' ''  # 关闭并清空设备和目标
 ```
 
 `on` 会先启动前端，再让 Stargate 重新生成并应用路由；`off` 顺序相反。失败时恢复原来的开关、设备列表、前端运行和自启状态；如果已尝试切换路由，会重新应用旧运行态，不能仅凭配置文件相同跳过恢复。恢复本身失败会明确报错，并保留仍可能被路由使用的前端。每次切换都会重启一次 Stargate，正在走代理的连接会断开一次。
 
 不带设备参数时沿用上次保存的设备列表。
+
+LuCI 的 **Stargate → 去重编解码** 页面提供开关、设备（IP/网段）、目标域名和运行状态。提交直接调用同一个事务入口，失败恢复原配置和运行态；开启必须同时有设备和目标。清空目标时应取消启用。该页面使用 Lua 表单，兼容两种 LuCI 菜单入口。
+
+`targets` 只决定哪些域名进入前端，且只能在现有 `domains` 范围内收窄（包含子域名）；未配置时兼容旧配置，沿用 `domains`。因此移除目标不会轮换 CA，也不会改变普通代理出口。关闭并清空时，UCI 保存 `targets=none` 表示没有目标，避免空选项被 UCI 丢弃后意外回退默认域名；页面显示为空。
 
 ## 前提
 
@@ -51,6 +57,7 @@ UCI `stargate.dedup` 段，一般不需要改：
 | 选项 | 默认 | 说明 |
 | --- | --- | --- |
 | `domains` | `chatgpt.com api.openai.com` | 接管的域名，含子域名；改动后需删除 `/etc/stargate/dedup` 让 CA 重建，设备重新信任 |
+| `targets` | 未设置时沿用 `domains` | 实际送去自签和编解码的目标；可收窄而无需更换 CA，`none` 表示无目标 |
 | `port` | `10860` | 前端端口；加 1 是回程入站，加 2 是统计接口 |
 | `memory_mib` | `300` | 内存上限，索引和在途预算按比例缩放 |
 | `index_mib` | 空（按 `memory_mib` 缩放，300 时为 230） | 前端认为解码端持有的内容量，设为解码端 `cache-mib` 的约 90%；只存哈希，按实测平均块约 9 KiB 计约占 1/40，最坏 1/8 |
