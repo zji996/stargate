@@ -6,6 +6,13 @@
 
 用户额外授权 AnyTLS 远程访问组件：路由器提供内网端口，macOS 作为访问端，经既有 DMIT AnyTLS 中转。组件独立安装与配置，主代理保持 sing-box；frp 只承担明确授权的 STCP 映射。
 
+## 2026-10-28 更新
+
+- 10-27 的去重扩域按用户逐步执行完成：8.12 同时信任新旧 CA 并重启 Sub2API（00:11）；edge-gateway 隧道化随 NetBird 迁移的 `apply` 发布并换了 public3 编码端（01:22，api2.ai 隧道约 83×）；DMIT 解码端放行 9 个域名（02:19，anytls-server 未重启）；8.1 前端换为 `f466007` 并写入目标、换用新 CA（02:20，Stargate 重启一次）。
+- 现状：8.1 `domains` 9 个、`targets` 为 `chatgpt.com api.openai.com api.commandcode.ai cloudcode-pa.googleapis.com daily-cloudcode-pa.googleapis.com`；8.12 对 chatgpt/commandcode（透明）与两个 cloudcode-pa（经 `192.168.8.1:10819`）均看到受信任的 `anytls-dedup CA`，Sub2API 无 TLS 报错；前端重启后 20 分钟约 9×（缓存预热中）。暂停/出错账号与切换前基线一致（另有 105 于 23:30 触发周额度限流，早于本次改动）。旧 CA 由每小时同步移除，不再重启 Sub2API。
+- 第一次执行第 1 步失败并自动回滚：新旧 CA 同名且无 AKI，OpenSSL 3.0 `verify` 只认 bundle 里的第一张，属检查误报；过渡脚本改为按指纹检查并用真实拦截连接校验后通过。
+- NetBird 控制面从 egress-nat 迁到 public2（edge-gateway 记录）。原因是 NAT 机 STUN 不通，6.1↔8.1 一直走 relay，NAT 机被服务商当成中转停机；现在下发公共 STUN，两端 P2P（srflx/srflx，5 ms）。Stargate 侧无改动；8.1 的 netbird 0.69.0 在服务端消失后卡死，需本地 `/etc/init.d/netbird restart`。
+
 ## 2026-10-27 更新
 
 - 用户同意把去重做成"加一条流量更简单"：anytls-go `f466007` 新增 `cmd/dedup encode|decode`（反向代理版，按 Host 分发、SIGHUP 热加载路由），edge-gateway 的 frp 去重改用它并按出口共用隧道，服务写 `dedup: true` 即接入（edge-gateway 提交在 8.6 分支 `dedup-tunnel`，未发布）。`tools/dedup/build.sh` 固定到同一提交，前端代码未变。
