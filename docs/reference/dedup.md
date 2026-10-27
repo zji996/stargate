@@ -8,6 +8,7 @@ Codex 这类客户端每一轮都会把整段对话历史重新上传。去重�
 
 - 路由器：`stargate-dedup` 前端，即 anytls-go 的 `cmd/dedup`。Stargate 不保存其源码：`sh tools/dedup/build.sh` 从 `zji996/anytls-go` 的固定提交拉取并构建到 `.local/dedup-build/`，不使用 `third_party/`；升级时修改脚本里的提交。由 `/etc/init.d/stargate-dedup` 管理，LuCI 包不带该二进制。
 - 出口服务器：anytls-go 的 `dedup back` 解码端，加上带 `-dedup-backend` 参数的 anytls-server。没有解码端的节点照常工作，前端对它们原样转发。
+- 同一程序的 `encode`/`decode` 子命令是不拦截 TLS 的反向代理版本，edge-gateway 用它给 frp 发布的服务去重；帧格式与本页相同，升级 `build.sh` 的提交时两边一起考虑。
 
 ## 开关
 
@@ -56,12 +57,26 @@ UCI `stargate.dedup` 段，一般不需要改：
 
 | 选项 | 默认 | 说明 |
 | --- | --- | --- |
-| `domains` | `chatgpt.com api.openai.com` | 接管的域名，含子域名；改动后需删除 `/etc/stargate/dedup` 让 CA 重建，设备重新信任 |
+| `domains` | `chatgpt.com api.openai.com` | CA 允许签发的域名（含子域名），也是前端可拦截的范围；改动要换 CA，见下节 |
 | `targets` | 未设置时沿用 `domains` | 实际送去自签和编解码的目标；可收窄而无需更换 CA，`none` 表示无目标 |
 | `port` | `10860` | 前端端口；加 1 是回程入站，加 2 是统计接口 |
 | `memory_mib` | `300` | 内存上限，索引和在途预算按比例缩放 |
 | `index_mib` | 空（按 `memory_mib` 缩放，300 时为 230） | 前端认为解码端持有的内容量，设为解码端 `cache-mib` 的约 90%；只存哈希，按实测平均块约 9 KiB 计约占 1/40，最坏 1/8 |
 | `compress` | `auto` | 新内容的压缩：`auto`、`huffman`（更省 CPU）或 `off`（只去重） |
+
+## 加目标域名
+
+`targets` 在 `domains` 范围内，改目标只需 `dedup.sh configure`（或 LuCI 页面），重启一次 Stargate，不换 CA、设备无需操作。所以 `domains` 宜一次覆盖可能用到的大模型 API 主机，之后只改 `targets`。
+
+只有经出口节点（有解码端）的连接能去重；直连的域名列入目标会被前端送往节点，改变出口，先确认它本来就走代理。
+
+扩大 `domains` 要换 CA。为了让设备只重启一次客户端：
+
+1. 在路由器另一个目录生成新 CA：`stargate-dedup ca -dir /etc/stargate/dedup.next -domains <新清单，逗号分隔>`，运行中的前端不受影响。
+2. 设备同时信任新旧 CA：新 CA 装为 `stargate-dedup.crt`，旧的另存 `stargate-dedup-prev.crt`，把新清单写进 `/etc/stargate-dedup-ca/domains`（顺序与 UCI 相同），装上 `tools/dedup/ca-sync.sh`，再重启一次 Sub2API。
+3. 出口解码端 `ANYTLS_DEDUP_DOMAINS` 换成新清单并重启解码端。
+4. 路由器把新 CA 换入 `/etc/stargate/dedup/`，设置 UCI `domains`，再 `dedup.sh configure 1 '<设备>' '<目标>'`。
+5. 设备的同步脚本取到新 CA 后自动删除 `stargate-dedup-prev.crt`，不再重启。
 
 ## 2026-10-21：6.1 实机验收
 
@@ -111,7 +126,7 @@ WSL 系统 DNS 经 Windows 隧道返回过错误地址；直接查询路由器�
 设备侧 CA 自动同步（Sub2API 主机，Ubuntu 24.04）：
 
 - 叶子证书由前端签发，7 天有效、到期前一天自动重签，设备无需操作；CA 10 年有效，只在重刷、改域名或手动轮换时变化。
-- `stargate-dedup-ca-sync.timer` 开机 2 分钟及每小时运行 `/usr/local/sbin/stargate-dedup-ca-sync`：用 `/etc/stargate-dedup-ca/` 下的专用密钥和固定主机密钥取 CA。路由器 dropbear 对该密钥强制 `command="cat /etc/stargate/dedup/ca.pem"` 并禁止转发与 PTY，实测任意命令都只返回 CA、端口转发被拒。
+- `stargate-dedup-ca-sync.timer` 开机 2 分钟及每小时运行 `/usr/local/sbin/stargate-dedup-ca-sync`（源码 `tools/dedup/ca-sync.sh`，路由器地址与允许的域名分别读 `/etc/stargate-dedup-ca/router` 和 `domains`；换 CA 期间路由器仍给旧 CA 时，只要它等于 `stargate-dedup-prev.crt` 就不动作）：用 `/etc/stargate-dedup-ca/` 下的专用密钥和固定主机密钥取 CA。路由器 dropbear 对该密钥强制 `command="cat /etc/stargate/dedup/ca.pem"` 并禁止转发与 PTY，实测任意命令都只返回 CA、端口转发被拒。
 - 只接受单张、CA:TRUE、名称约束 critical 且恰为 `chatgpt.com api.openai.com` 的未过期证书；变化时写入 `/usr/local/share/ca-certificates/stargate-dedup.crt`、`update-ca-certificates` 并重启 `sub2api.service`（Go 只在启动时读取信任库）。取不到时保留现有证书。日志 `journalctl -t stargate-dedup-ca`。
 
 验收：

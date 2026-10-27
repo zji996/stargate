@@ -6,6 +6,13 @@
 
 用户额外授权 AnyTLS 远程访问组件：路由器提供内网端口，macOS 作为访问端，经既有 DMIT AnyTLS 中转。组件独立安装与配置，主代理保持 sing-box；frp 只承担明确授权的 STCP 映射。
 
+## 2026-10-27 更新
+
+- 用户同意把去重做成"加一条流量更简单"：anytls-go `f466007` 新增 `cmd/dedup encode|decode`（反向代理版，按 Host 分发、SIGHUP 热加载路由），edge-gateway 的 frp 去重改用它并按出口共用隧道，服务写 `dedup: true` 即接入（edge-gateway 提交在 8.6 分支 `dedup-tunnel`，未发布）。`tools/dedup/build.sh` 固定到同一提交，前端代码未变。
+- 用户要求加 command_code（`api.commandcode.ai`）与 antigravity（`cloudcode-pa`/`daily-cloudcode-pa.googleapis.com`，经 `dmit-69` HTTP 端口）。两者现已经 DMIT 出口，加入目标不改变出口。一次把 CA 域名扩到常用大模型 API 主机（另含 `api.anthropic.com`、`generativelanguage.googleapis.com`、`api.x.ai`、`cli-chat-proxy.grok.com`），以后加目标不再换 CA。过程见 [去重加速](reference/dedup.md#加目标域名)。
+- 设备侧 CA 同步脚本收进仓库 `tools/dedup/ca-sync.sh`，支持新旧 CA 过渡，`tests/dedup-ca-sync.sh` 用真实带名称约束的 CA 覆盖。
+- 已做且不影响运行：8.1 在 `/etc/stargate/dedup.next/` 生成新 CA（SHA-256 `CF:B4:A5:E6…E1:EA`），8.12 `/var/tmp/stargate-dedup-widen/` 暂存过渡脚本。待用户确认窗口后执行，闪断点见当日记录。
+
 ## 2026-10-23 更新
 
 - 按用户要求在 `root@192.168.6.1` 关闭去重编解码，清空设备和目标（UCI `enabled=0`、`targets=none`），同时排除 `chatgpt.com` 与 `api.openai.com`；保留 CA，后续再自行设置目标。前端已停止且禁用自启，运行配置仅移除了去重入站、出站和导流规则，普通代理与透明转发继续运行。两个域名均从 `192.168.6.229` 实测拿到 Google Trust Services 原站证书且 TLS 校验通过，百度 200、Google 204。
