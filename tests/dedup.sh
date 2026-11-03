@@ -46,6 +46,8 @@ uci_get() {
     dedup.targets) printf '%s\n' "${dedup_targets_case-$3}" ;;
     dedup.port) printf '%s' "$dedup_port_case" ;;
     dedup.index_mib) printf '%s' "${dedup_index_case-}" ;;
+    dedup.reverse_listen) printf '%s' "${dedup_reverse_listen_case-}" ;;
+    dedup.reverse_origins) printf '%s' "${dedup_reverse_origins_case-}" ;;
     *) printf '%s' "$3" ;;
   esac
 }
@@ -69,6 +71,9 @@ cp "$(dedup_enabled_case=0 generate_config)" "$test_dir/off.json"
 cp "$(test_mode=direct generate_config)" "$test_dir/direct.json"
 cp "$(dedup_devices_case='' generate_config)" "$test_dir/nodevices.json"
 cp "$(dedup_targets_case='api.openai.com' generate_config)" "$test_dir/api-only.json"
+# The reverse entry is the front's business; sing-box's config must not change.
+cp "$(dedup_reverse_listen_case='10.0.0.1:10863' dedup_reverse_origins_case='api.example.com' generate_config)" \
+  "$test_dir/reverse.json"
 python3 - "$test_dir" <<'PY2'
 import json, sys
 d = sys.argv[1]
@@ -122,3 +127,7 @@ dedup_index_case=540 generate_config >/dev/null
 dedup_targets_case=www.chatgpt.com generate_config >/dev/null
 # Bad options do not matter while dedup is off.
 (dedup_enabled_case=0; dedup_port_case=x; generate_config >/dev/null)
+# The reverse entry adds no inbound, outbound or rule, and an unused or broken
+# reverse_listen does not stop the config from being generated while it is off.
+cmp -s "$test_dir/on.json" "$test_dir/reverse.json"
+(dedup_enabled_case=0 dedup_reverse_listen_case='not-an-address' dedup_reverse_origins_case='API..example.com' generate_config >/dev/null)

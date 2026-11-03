@@ -63,6 +63,8 @@ UCI `stargate.dedup` 段，一般不需要改：
 | `memory_mib` | `300` | 内存上限，索引和在途预算按比例缩放 |
 | `index_mib` | 空（按 `memory_mib` 缩放，300 时为 230） | 前端认为解码端持有的内容量，设为解码端 `cache-mib` 的约 90%；只存哈希，按实测平均块约 9 KiB 计约占 1/40，最坏 1/8 |
 | `compress` | `auto` | 新内容的压缩：`auto`、`huffman`（更省 CPU）或 `off`（只去重） |
+| `reverse_listen` | 空（关闭） | 反向入口的 `地址:端口`，例如 `10.0.0.1:10863`；明文 HTTP，见下节 |
+| `reverse_origins` | 空 | 反向入口允许访问的上游主机，空格分隔 |
 
 ## 加目标域名
 
@@ -77,6 +79,55 @@ UCI `stargate.dedup` 段，一般不需要改：
 3. 出口解码端 `ANYTLS_DEDUP_DOMAINS` 换成新清单并重启解码端。
 4. 路由器把新 CA 换入 `/etc/stargate/dedup/`，设置 UCI `domains`，再 `dedup.sh configure 1 '<设备>' '<目标>'`。
 5. 设备的同步脚本取到新 CA 后自动删除 `stargate-dedup-prev.crt`，不再重启。
+
+## 反向入口
+
+拦截链路要求客户端信任前端 CA 并被导流，只适合改不了 `base_url` 的客户端；能改 `base_url` 的服务用反向入口：请求不带 TLS，前端按路径第一段挑上游，自己以 `https://<origin>/<其余路径>` 再发出去，同样经通道编码、共用索引和解码端。CA 不参与，名单里加主机不改证书。
+
+- 源地址仍用 `devices`：不在其中的连接直接关闭，因此设备列表也要包含发起方（例如 Sub2API 主机）。
+- `reverse_origins` 是允许的主机，顺序无关；`reverse add/remove` 会去重排序。文件里的 `#` 注释和空行改动会被下一次 `reverse add/remove` 或前端重启覆盖，长期名单以 UCI 为准。
+- 凭据是 `reverse.auth`（`main:<密码>`），即 sing-box `dedup-in` 已有 `main` 用户，不新增秘密；文件 0600，只有 root 可读。
+- 只转发名单内主机的 443 端口，不能当作通用 HTTP 代理。
+- 解码端没列这个主机时，前端仍经同一 anytls 出口把请求发出去，只是不去重；解码端加上后 5 秒内自动切换。
+- 8.12 到 8.1 这一跳是局域网明文，API key 明文经过局域网。
+
+**开启反向入口 = 一次前端交接。** `reverse_listen` 出现在前端参数里，procd 的实例名随之改变，所以设置或清空它都会起新实例（旧实例 `-linger` 3 秒后退出，`sing-box` 不重启、CA 不动）：
+
+```sh
+uci set stargate.dedup.reverse_listen='10.0.0.1:10863'
+uci set stargate.dedup.reverse_origins='api.example.com'
+uci commit stargate
+/etc/init.d/stargate-dedup start   # 参数变了，procd 起新实例
+```
+
+端口不能与前端的 `port`..`port+2` 及其他 Stargate 端口重复；`reverse_origins` 为空时拒绝开启。
+
+**之后增删名单 = `reverse add/remove`，只发 SIGHUP**：名单放在 `$dedup_ca_dir/reverse-origins`（明文，0644），参数里只有路径，所以实例名不变。命令改 UCI、原子替换文件（临时文件 + `mv`，内容不变不重写）、前端在跑时 `/etc/init.d/stargate-dedup reload`（`reload_service` 只对运行中实例发 `procd_send_signal stargate-dedup '*' HUP`，不重新起实例）。不重启 `sing-box`、不重启前端、不碰 CA。失败时恢复原 UCI 与原文件，并对恢复后的文件再补发一次 SIGHUP。
+
+```sh
+/usr/share/stargate/dedup.sh reverse add api.example.com
+/usr/share/stargate/dedup.sh reverse remove api.example.com
+/usr/share/stargate/dedup.sh reverse list
+/usr/share/stargate/dedup.sh status        # reverse 监听、名单与 reverse_* 计数
+```
+
+`reverse list` 打印 UCI 里的名单（即 `reverse add/remove` 维护的那份）。不支持删到空：要关就清空 `reverse_listen` 再交接。
+
+### 用反向入口接入上游
+
+把发起方账号的 `base_url` 改为 `http://<reverse_listen>/<origin>/<原路径>`，热生效，回滚就是改回原地址。例如前端监听 `10.0.0.1:10863`，原来访问 `https://api.example.com/v1/models`：
+
+```
+base_url = http://10.0.0.1:10863/api.example.com/v1
+```
+
+先在发起方上用 `curl -sS -o /dev/null -w '%{http_code}\n' http://10.0.0.1:10863/api.example.com/v1/models` 确认返回与直连一致（通常是 401），再改后台。此时链路已经可用；DMIT 解码端名单加上这个主机后才会去重：
+
+1. 8.1：`/usr/share/stargate/dedup.sh reverse add api.example.com`（SIGHUP，前端不重启）。
+2. DMIT：`/etc/anytls/dedup-domains` 加一行，`systemctl reload anytls-dedup`（SIGHUP，解码端不重启，缓存保留）。
+3. 发起方后台改该账号 `base_url`。
+
+第 2 步可以晚做：只做 1、3 时请求经同一 anytls 出口但不经去重。
 
 ## 2026-10-21：6.1 实机验收
 

@@ -164,6 +164,12 @@ write_aux_fallback_rules() {
 # that node. "main" is the active node.
 dedup_password="stargate-dedup"
 
+# The reverse entry's lists live in files inside the CA directory: changing a
+# host changes no front argument, so procd keeps the instance and only a SIGHUP
+# is needed. See dedup.sh reverse.
+reverse_origins_name="reverse-origins"
+reverse_auth_name="reverse.auth"
+
 load_dedup_config() {
   dedup_enabled="$(bool_value "$(uci_get dedup enabled 0)")"
   dedup_devices="$(uci_get dedup devices '' | tr ',\t\n' '   ')"
@@ -180,6 +186,9 @@ load_dedup_config() {
   # Empty: sized with memory_mib. Set it to about 90% of the decoder's cache.
   dedup_index_mib="$(uci_get dedup index_mib '')"
   dedup_compress="$(uci_get dedup compress auto)"
+  # Plain HTTP entry for upstreams whose base_url we control; empty is off.
+  dedup_reverse_listen="$(uci_get dedup reverse_listen '')"
+  dedup_reverse_origins="$(uci_get dedup reverse_origins '' | tr 'A-Z,\t\n' 'a-z   ')"
   dedup_lanes=""
   # Direct mode sends nothing to a node, so nothing would be deduplicated.
   if [ "$dedup_enabled" = 1 ] && [ -n "$dedup_devices" ] && [ "$rules_mode" != direct ]; then
@@ -233,6 +242,43 @@ validate_dedup_config() {
       exit 1
     }
   done
+  # The reverse entry: a plain listener, hosts it may forward to, and the
+  # devices it accepts. Nothing is checked while it is off, so an unused option
+  # cannot stop Stargate from generating its own config.
+  if [ -n "$dedup_reverse_listen" ]; then
+    dl_reverse_host="${dedup_reverse_listen%:*}"
+    dl_reverse_port="${dedup_reverse_listen##*:}"
+    [ "$dl_reverse_host" != "$dedup_reverse_listen" ] || {
+      echo "reverse_listen must be an address and a port, e.g. 10.0.0.1:10863" >&2
+      exit 1
+    }
+    validate_listen_address "$dl_reverse_host" "reverse listen address" || exit 1
+    validate_port_value "$dl_reverse_port" "reverse listen port" || exit 1
+    for dl_p in "$dedup_port" $((dedup_port + 1)) $((dedup_port + 2)); do
+      [ "$dl_p" != "$dl_reverse_port" ] || {
+        echo "reverse listen port $dl_reverse_port conflicts with the dedup ports" >&2
+        exit 1
+      }
+    done
+    for dl_used in ${used_ports:-}; do
+      [ "$dl_used" != "$dl_reverse_port" ] || {
+        echo "reverse listen port $dl_reverse_port conflicts with another Stargate port" >&2
+        exit 1
+      }
+    done
+    # Forwarded hosts are plain names: they are not signed by the CA, so any
+    # name works and a new one needs no rotation.
+    [ -n "$dedup_reverse_origins" ] || {
+      echo "reverse_origins are required while reverse_listen is set" >&2
+      exit 1
+    }
+    for dl_origin in $dedup_reverse_origins; do
+      printf '%s\n' "$dl_origin" | grep -Eq '^[a-z0-9-]+(\.[a-z0-9-]+)+$' || {
+        echo "invalid reverse origin (want a host name): $dl_origin" >&2
+        exit 1
+      }
+    done
+  fi
 }
 
 dedup_lane_out() {

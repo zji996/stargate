@@ -19,8 +19,19 @@ Usage:
   /usr/share/stargate/dedup.sh off              turn off
   /usr/share/stargate/dedup.sh configure <0|1> "devices" "targets"
                                               apply the switch, devices and target domains together
+  /usr/share/stargate/dedup.sh reverse add <host>...
+  /usr/share/stargate/dedup.sh reverse remove <host>...
+  /usr/share/stargate/dedup.sh reverse list    hosts the reverse entry forwards
   /usr/share/stargate/dedup.sh status
   /usr/share/stargate/dedup.sh ca               print the CA certificate the devices must trust
+
+Reverse entry: UCI dedup.reverse_listen (an address and port, empty is off) and
+dedup.reverse_origins. Turning it on or off changes the front's arguments, so it
+is one front handover: set both options, uci commit, then
+/etc/init.d/stargate-dedup start (dedup.sh configure 1 ... starts it too).
+Afterwards reverse add/remove only rewrite the host list and send the running
+front a SIGHUP: no restart, no sing-box restart, no CA change. The decoder must
+list the same hosts before its side is deduplicated.
 USAGE
 }
 
@@ -55,7 +66,47 @@ print_front() {
   args="$args -domains $(printf '%s' "$dedup_domains" | tr ' ' ',') -compress $dedup_compress"
   args="$args -index-mib ${dedup_index_mib:-$((230 * dedup_memory_mib / 300))} -inflight-mib $((128 * dedup_memory_mib / 300))"
   args="$args -memory-mib $((220 * dedup_memory_mib / 300)) -linger 3s"
+  # The reverse entry's host list and credentials are files the front re-reads
+  # on SIGHUP, so only their paths appear here: adding a host keeps this
+  # instance, and with reverse_listen empty the arguments are exactly as before.
+  if [ -n "$dedup_reverse_listen" ]; then
+    write_reverse_files || die "cannot write the reverse lists in $dedup_ca_dir"
+    args="$args -reverse $dedup_reverse_listen -reverse-origins $(reverse_origins_path) -reverse-auth $(reverse_auth_path)"
+    args="$args -reverse-allow $(printf '%s' "$dedup_devices" | tr ' ' ',')"
+  fi
   printf 'front_%s %s\n' "$(printf '%s %s' "$args" "$(md5sum <"$dedup_bin")" | md5sum | cut -c1-8)" "$args"
+}
+
+reverse_origins_path() { printf '%s/%s' "$dedup_ca_dir" "$reverse_origins_name"; }
+reverse_auth_path() { printf '%s/%s' "$dedup_ca_dir" "$reverse_auth_name"; }
+
+# Write a file holding one word per line, only when its content changes, always
+# through a temp file in the same directory and a rename, so the front never
+# reads a half-written list.
+# write_list <path> <mode> <space- or newline-separated words>
+write_list() {
+  wl_path=$1 wl_mode=$2
+  shift 2
+  # shellcheck disable=SC2086
+  wl_content="$(printf '%s\n' $*)"
+  if [ -f "$wl_path" ] && [ "$(cat "$wl_path")" = "$wl_content" ]; then
+    # Same content, same access: nothing to replace.
+    chmod "$wl_mode" "$wl_path" 2>/dev/null || true
+    return 0
+  fi
+  wl_tmp="$wl_path.new.$$"
+  (umask 077 && printf '%s\n' "$wl_content" >"$wl_tmp") || { rm -f "$wl_tmp"; return 1; }
+  chmod "$wl_mode" "$wl_tmp" || { rm -f "$wl_tmp"; return 1; }
+  mv -f "$wl_tmp" "$wl_path" || { rm -f "$wl_tmp"; return 1; }
+}
+
+# The front's state that must never enter its arguments.
+write_reverse_files() {
+  mkdir -p "$dedup_ca_dir" || return 1
+  # One host per line; the front skips blank lines and # comments.
+  write_list "$(reverse_origins_path)" 0644 "$dedup_reverse_origins" || return 1
+  # The main lane's credentials, the same pair sing-box already sends.
+  write_list "$(reverse_auth_path)" 0600 "main:$dedup_password" || return 1
 }
 
 listening() {
@@ -246,6 +297,162 @@ dedup_configure() {
   fi
 }
 
+# The hosts the reverse entry forwards, one per line: the UCI list as an
+# operator would read it, not the snapshot taken for a rollback.
+reverse_hosts() {
+  printf '%s\n' "$(uci_get dedup reverse_origins '')" | tr ' ' '\n' | awk 'NF && !seen[$0]++'
+}
+
+# The list after adding or removing hosts: sorted and unique, so the file does
+# not depend on the order the operator typed.
+reverse_next_hosts() {
+  reverse_mode=$1
+  shift
+  {
+    reverse_hosts
+    [ "$reverse_mode" != add ] || printf '%s\n' "$@"
+  } | while IFS= read -r reverse_line; do
+    [ -n "$reverse_line" ] || continue
+    if [ "$reverse_mode" = remove ]; then
+      reverse_drop=0
+      for reverse_host in "$@"; do
+        [ "$reverse_host" != "$reverse_line" ] || reverse_drop=1
+      done
+      [ "$reverse_drop" = 0 ] || continue
+    fi
+    printf '%s\n' "$reverse_line"
+  done | sort -u | tr '\n' ' ' | sed 's/ *$//'
+}
+
+# Adding or removing a host leaves reverse_listen alone, so the front's
+# arguments and instance name stay the same: only the list file and a SIGHUP
+# are needed. Remember the UCI text and both list files first, so a failure
+# midway can put back exactly what was there.
+snapshot_reverse() {
+  uci_get_reverse_origins="$(uci_get dedup reverse_origins '')"
+  reverse_origins_set=0
+  uci_cmd get "$app.dedup.reverse_origins" >/dev/null 2>&1 && reverse_origins_set=1
+  reverse_origins_before="$(reverse_origins_path)"
+  reverse_auth_before="$(reverse_auth_path)"
+  reverse_backup="$(mktemp -d "${TMPDIR:-/tmp}/stargate-reverse.XXXXXX")" || return 1
+  [ ! -f "$reverse_origins_before" ] || cp -p "$reverse_origins_before" "$reverse_backup/origins"
+  [ ! -f "$reverse_auth_before" ] || cp -p "$reverse_auth_before" "$reverse_backup/auth"
+  reverse_front_running=0
+  "$dedup_init" status >/dev/null 2>&1 && reverse_front_running=1
+  reverse_reloaded=0
+  # Nothing is written until dedup_reverse has checked everything it can.
+  reverse_touched=0
+}
+
+restore_reverse() {
+  if [ "$reverse_origins_set" = 1 ]; then
+    uci_cmd set "$app.dedup.reverse_origins=$uci_get_reverse_origins" || return 1
+  else
+    if uci_cmd get "$app.dedup.reverse_origins" >/dev/null 2>&1; then
+      uci_cmd delete "$app.dedup.reverse_origins" || return 1
+    fi
+  fi
+  uci_commit || return 1
+  for reverse_saved in origins auth; do
+    case "$reverse_saved" in
+      origins) reverse_file="$reverse_origins_before" ;;
+      *) reverse_file="$reverse_auth_before" ;;
+    esac
+    if [ -f "$reverse_backup/$reverse_saved" ]; then
+      cp -p "$reverse_backup/$reverse_saved" "$reverse_file" || return 1
+    else
+      rm -f "$reverse_file" || return 1
+    fi
+  done
+  rm -rf "$reverse_backup"
+  # The front has already re-read the abandoned list; reread the restored one,
+  # unless it was not running and had nothing to reload.
+  [ "$reverse_reloaded" = 1 ] || return 0
+  "$dedup_init" reload
+}
+
+reverse_transaction() (
+  snapshot_reverse || die "cannot back up the reverse lists in $dedup_ca_dir"
+  trap 'rc=$?; trap - EXIT; if [ "$rc" != 0 ]; then
+    if [ "${reverse_touched:-0}" != 1 ]; then
+      rm -rf "$reverse_backup"
+      echo "dedup reverse failed; nothing changed" >&2
+    elif restore_reverse; then
+      echo "dedup reverse failed; previous list restored" >&2
+    else
+      echo "dedup reverse failed; recovery incomplete, check $dedup_ca_dir" >&2
+    fi
+  fi; exit "$rc"' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+  trap 'exit 129' HUP
+  "$@"
+)
+
+dedup_reverse() {
+  reverse_mode="${1:-}"
+  case "$reverse_mode" in
+    add|remove|list) shift ;;
+    *) die 'reverse requires: add|remove|list [host ...]' ;;
+  esac
+  if [ "$reverse_mode" = list ]; then
+    [ "$#" = 0 ] || die 'reverse list takes no hosts'
+    load_front_config
+    reverse_hosts
+    return 0
+  fi
+
+  # Normalise and check the hosts before touching anything: a typo must leave
+  # UCI and the list the front is using alone.
+  reverse_hosts_wanted=""
+  for reverse_host in "$@"; do
+    reverse_host="$(printf '%s' "$reverse_host" | tr 'A-Z' 'a-z')"
+    printf '%s\n' "$reverse_host" | grep -Eq '^[a-z0-9-]+(\.[a-z0-9-]+)+$' ||
+      die "invalid reverse origin (want a host name): $reverse_host"
+    reverse_hosts_wanted="$reverse_hosts_wanted $reverse_host"
+  done
+  [ -n "$reverse_hosts_wanted" ] || die "which hosts? e.g. dedup.sh reverse $reverse_mode api.example.com"
+  # shellcheck disable=SC2086
+  set -- $reverse_hosts_wanted
+
+  load_front_config
+  [ -n "$dedup_reverse_listen" ] || die 'the reverse entry is off: set dedup.reverse_listen and dedup.reverse_origins first'
+  reverse_next="$(reverse_next_hosts "$reverse_mode" "$@")"
+  # An empty list would leave a listening entry that forwards nothing.
+  [ -n "$reverse_next" ] || die 'that would leave no reverse origins; clear reverse_listen to turn the entry off'
+
+  reverse_old="$(reverse_hosts | sort -u | tr '\n' ' ' | sed 's/ *$//')"
+  [ "$reverse_old" != "$reverse_next" ] || {
+    rm -rf "$reverse_backup"
+    echo "reverse origins unchanged: $reverse_next"
+    return 0
+  }
+
+  uci_cmd get "$app.dedup" >/dev/null 2>&1 || uci_cmd set "$app.dedup=dedup"
+  reverse_touched=1
+  uci_cmd set "$app.dedup.reverse_origins=$reverse_next"
+  uci_commit || die 'cannot save the reverse origins'
+
+  # reverse.auth and the front's arguments were valid before and still are:
+  # only the list file changes, through a temp file and a rename.
+  write_list "$(reverse_origins_path)" 0644 "$reverse_next" ||
+    die "cannot write $(reverse_origins_path)"
+  if [ "$reverse_front_running" = 1 ]; then
+    reverse_reloaded=1
+    "$dedup_init" reload || die 'the front did not take the new list'
+  fi
+  rm -rf "$reverse_backup"
+  echo "reverse origins: $reverse_next"
+}
+
+# Only a change needs the rollback snapshot: list is a read.
+reverse_command() {
+  case "${1:-}" in
+    add|remove) reverse_transaction dedup_reverse "$@" ;;
+    *) dedup_reverse "$@" ;;
+  esac
+}
+
 dedup_status() {
   load_front_config
   steering=no
@@ -254,12 +461,14 @@ dedup_status() {
   ! listening "$dedup_port" || front=up
   printf 'switch: %s\ndevices: %s\ndomains: %s\n' "$([ "$dedup_enabled" = 1 ] && echo on || echo off)" "${dedup_devices:-none}" "$dedup_domains"
   printf 'targets: %s\n' "${dedup_targets:-none}"
+  printf 'reverse: %s\nreverse origins: %s\n' "${dedup_reverse_listen:-off}" "${dedup_reverse_origins:-none}"
   printf 'front: %s\nsteering in sing-box: %s\n' "$front" "$steering"
   [ -f "$dedup_ca_dir/ca.pem" ] && printf 'ca: %s\n' "$dedup_ca_dir/ca.pem" || printf 'ca: none\n'
   [ "$front" = up ] || return 0
   stats="$(wget -q -T 2 -O - "http://127.0.0.1:$((dedup_port + 2))/stats" 2>/dev/null || true)"
   [ -n "$stats" ] || return 0
-  for key in original_bytes sent_bytes ratio intercepted_conns passed_conns; do
+  for key in original_bytes sent_bytes ratio intercepted_conns passed_conns \
+    reverse_requests reverse_direct reverse_refused; do
     printf '%s: %s\n' "$key" "$(jsonfilter -s "$stats" -e "@.$key" 2>/dev/null || echo 0)"
   done
   printf 'lanes: %s\n' "$(jsonfilter -s "$stats" -e '@.lanes' 2>/dev/null)"
@@ -271,6 +480,7 @@ case "$action" in
   on) switch_transaction dedup_on "$@" ;;
   off) switch_transaction dedup_off ;;
   configure) switch_transaction dedup_configure "$@" ;;
+  reverse) reverse_command "$@" ;;
   status) dedup_status ;;
   ca) cat "$dedup_ca_dir/ca.pem" ;;
   front) print_front ;;

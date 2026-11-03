@@ -46,6 +46,17 @@ Status: In Progress
 - DNS：展示 sing-box 内部 DNS 配置，系统级 DNS 接管默认关闭。
 - Safety：配置备份、回滚、诊断包导出、其他代理服务只读状态。
 
+## 待办：去重反向入口的 LuCI 页面
+
+Status: Not Implemented
+
+后端已具备：UCI `dedup.reverse_listen` / `dedup.reverse_origins`，`dedup.sh reverse add|remove|list` 只发 SIGHUP，`status` 输出 `reverse_requests` 等计数。页面本次未做，见 [去重加速](reference/dedup.md#反向入口)。
+
+- 去重编解码页增加反向入口：监听地址、允许的主机和当前名单。
+- 开启/关闭要明确提示"一次前端交接"；增删主机走 `reverse add/remove`，不能为了改名单而重写 `reverse_listen`。
+- 展示 `/stats` 的 `reverse_requests`、`reverse_direct`、`reverse_refused`。
+- 校验复用后端 `validate_dedup_config` 的规则，不要在页面另立一套。
+
 ## 第六阶段：显式网络接管能力
 
 Status: In Progress
