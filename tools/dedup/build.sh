@@ -7,7 +7,7 @@ set -eu
 # build a back whose TLS handshakes differ from a Go 1.27 client's, so the
 # toolchain is pinned too (go downloads it when missing).
 repository=https://github.com/zji996/anytls-go.git
-commit=f466007cf500dd4edfe650653f2863f9d99a76c2
+commit=77afc500473478c00a4d784486da4e813815e99b
 base=$(CDPATH='' cd -- "$(dirname -- "$0")" && pwd)
 output=${1:-"$base/../../.local/dedup-build"}
 mkdir -p "$output"
