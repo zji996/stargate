@@ -90,14 +90,32 @@ start_service() {
 }
 
 # rc.common's reload calls this instead of restarting when it exists. It only
-# signals the instances procd already runs: a new instance would cost a
-# handover, and the new arguments would not be the point here.
+# signals fronts already running, and only those started with -reverse: they
+# alone reread files on SIGHUP. To any other front - an older build, or one
+# still draining from before a handover - SIGHUP is Go's default signal and
+# would end it, cutting what it still serves.
+front_cmdline() { tr '\0' ' ' <"/proc/$1/cmdline" 2>/dev/null; }
+signal_front() { kill -HUP "$1"; }
+
 reload_service() {
-  procd_send_signal stargate-dedup '*' HUP && return 0
-  # Nothing registered to signal means no front is up, so nothing to reload.
-  if procd_running stargate-dedup >/dev/null 2>&1; then
-    echo "stargate-dedup: the running front did not take the signal" >&2
+  rs_sent=0
+  rs_failed=0
+  rs_other=0
+  for rs_pid in $(pgrep -f "$front_pattern"); do
+    case " $(front_cmdline "$rs_pid") " in
+      *" -reverse "*) signal_front "$rs_pid" && rs_sent=1 || rs_failed=1 ;;
+      *) rs_other=1 ;;
+    esac
+  done
+  if [ "$rs_failed" = 1 ]; then
+    echo "stargate-dedup: a running front did not take the signal" >&2
     return 1
   fi
+  [ "$rs_sent" = 1 ] && return 0
+  if [ "$rs_other" = 1 ]; then
+    echo "stargate-dedup: no running front reads the reverse lists; hand over to one started with -reverse first" >&2
+    return 1
+  fi
+  # No front at all: nothing to reload.
   return 0
 }

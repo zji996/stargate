@@ -49,11 +49,19 @@ sleeper() {
   sleepers="$sleepers $pid"
 }
 
-# reload must only signal what procd runs. Record the calls instead of making
-# them, so a start, stop or new instance would show up as a failure.
+# reload must only signal running fronts that read the reverse lists. Record
+# the signals instead of sending them, so a start, stop or new instance would
+# show up as a failure.
 signals=""
-procd_send_signal() { signals="$signals $1/$2/$3"; }
-procd_running() { [ -f "$lab/running" ]; }
+reverse_fronts=""
+front_cmdline() {
+  case " $reverse_fronts " in
+    *" $1 "*) echo "/usr/bin/stargate-dedup front -listen 127.0.0.1:10860 -reverse 10.0.0.1:10863 -reverse-origins /x" ;;
+    *) echo "/usr/bin/stargate-dedup front -listen 127.0.0.1:10860 -reverse-origins-is-not-the-flag" ;;
+  esac
+}
+signal_failure=0
+signal_front() { signals="$signals $1"; [ "$signal_failure" = 0 ]; }
 
 [ "$(handover_max "$(mib 300)" "$(mib 171)" "$(mib 377)")" = "$(mib 471)" ]
 # Little free memory: only what is there, never below the usual limit.
@@ -96,22 +104,31 @@ expect 471 "superseded restore"
 kill $old_fronts
 wait_limit 300 "after the last old front exited"
 
-# reload: one HUP to every instance of the front, and nothing else.
+# reload: one HUP to each front started with -reverse, and nothing else.
 instances_before="$(cat "$lab/opened")"
 served_before="$(cat "$cgroup_root/services/stargate-dedup/memory.max")"
-touch "$lab/running"
+old_fronts="101 102"
+reverse_fronts="102"
 reload_service
-[ "$signals" = " stargate-dedup/*/HUP" ] || { echo "reload signalled '$signals'" >&2; exit 1; }
+[ "$signals" = " 102" ] || { echo "reload signalled '$signals', want only the -reverse front 102" >&2; exit 1; }
 [ "$(cat "$lab/opened")" = "$instances_before" ] || { echo 'reload opened an instance' >&2; exit 1; }
 [ "$(cat "$cgroup_root/services/stargate-dedup/memory.max")" = "$served_before" ] ||
   { echo 'reload changed the memory limit' >&2; exit 1; }
-# Nothing running: the signal fails, but a stopped front is not an error.
-rm -f "$lab/running"
+# Only an older front (or one draining from before -reverse): SIGHUP would end
+# it, so nothing is signalled and reload fails.
 signals=""
-procd_send_signal() { signals="$signals $1/$2/$3"; return 1; }
+reverse_fronts=""
+if reload_service 2>/dev/null; then echo 'reload without a -reverse front succeeded' >&2; exit 1; fi
+[ -z "$signals" ] || { echo "reload signalled an older front: '$signals'" >&2; exit 1; }
+# No front at all: nothing to reload, not an error.
+old_fronts=""
 reload_service
-[ "$signals" = " stargate-dedup/*/HUP" ] || { echo "reload without a front signalled '$signals'" >&2; exit 1; }
-# A front procd reports but that does not take the signal is a real failure.
-touch "$lab/running"
-if reload_service; then echo 'a failed signal to a running front was reported as success' >&2; exit 1; fi
+[ -z "$signals" ] || { echo "reload without a front signalled '$signals'" >&2; exit 1; }
+# A -reverse front that does not take the signal is a real failure.
+old_fronts="103"
+reverse_fronts="103"
+signal_failure=1
+if reload_service 2>/dev/null; then echo 'a failed signal to a running front was reported as success' >&2; exit 1; fi
+signal_failure=0
+old_fronts=""
 echo "dedup init handover tests passed"
