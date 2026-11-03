@@ -69,6 +69,12 @@ if [ -n "$reverse_listen" ] || [ -n "$reverse_origins" ]; then
   [ -n "$reverse_listen" ] && [ -n "$reverse_origins" ] || {
     echo "--reverse-listen and --reverse-origins go together" >&2; exit 2;
   }
+  # They travel to the router inside one quoted ssh command line.
+  printf '%s\n' "$reverse_listen" | grep -Eq '^[0-9A-Za-z.:-]+:[0-9]+$' ||
+    { echo "bad --reverse-listen: $reverse_listen" >&2; exit 2; }
+  printf '%s\n' "$reverse_origins" | grep -Eq '^[a-z0-9 .-]+$' ||
+    { echo "bad --reverse-origins: $reverse_origins" >&2; exit 2; }
+  reverse_origins=$(printf '%s\n' $reverse_origins | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ *$//')
 fi
 
 ssh_opts="-o BatchMode=yes -o ConnectTimeout=10"
@@ -266,7 +272,9 @@ fi
 
 # ---- router: swap the front ---------------------------------------------------
 step "router: upgrade front"
-on_router sh -s -- "$ts" "$index_mib" "$stage" "$reverse_listen" "$reverse_origins" <<'EOF' || die "router upgrade failed (restored)"
+# ssh joins its arguments with spaces for the remote shell, which would split
+# the origins: quote them into one command line (checked above for quotes).
+on_router "sh -s -- '$ts' '$index_mib' '$stage' '$reverse_listen' '$reverse_origins'" <<'EOF' || die "router upgrade failed (restored)"
 set -e
 ts=$1 index=$2 stage=$3 reverse_listen=$4 reverse_origins=$5
 backup=/root/stargate-dedup-upgrade-$ts
@@ -274,13 +282,24 @@ mkdir -p "$backup"
 (cd / && tar czf "$backup/backup.tar.gz" usr/bin/stargate-dedup usr/share/stargate/dedup.sh \
   usr/share/stargate/lib/config.sh etc/init.d/stargate-dedup etc/config/stargate)
 singbox_pid=$(pgrep -f '^/usr/bin/sing-box' | head -1)
+install_file() { cp "$1" "$2.new" && chmod "$3" "$2.new" && mv -f "$2.new" "$2"; }
+# Unpack aside and rename into place: the running front's binary is never
+# rewritten where it stands.
 restore() {
   echo "   restoring from $backup" >&2
-  (cd / && tar xzf "$backup/backup.tar.gz")
+  rm -rf "$backup/files" && mkdir -p "$backup/files" &&
+    tar xzf "$backup/backup.tar.gz" -C "$backup/files" &&
+    for f in usr/bin/stargate-dedup usr/share/stargate/dedup.sh usr/share/stargate/lib/config.sh \
+      etc/init.d/stargate-dedup etc/config/stargate; do
+      cp -p "$backup/files/$f" "/$f.new" && mv -f "/$f.new" "/$f" || exit 1
+    done
   /etc/init.d/stargate-dedup start
   exit 1
 }
-install_file() { cp "$1" "$2.new" && chmod "$3" "$2.new" && mv -f "$2.new" "$2"; }
+# listening PORT: some local TCP socket listens on PORT (as dedup.sh checks).
+listening() {
+  awk -v port="$(printf '%04X' "$1")" '$4 == "0A" && substr($2, index($2, ":") + 1) == port { found = 1 } END { exit !found }' /proc/net/tcp
+}
 install_file "$stage/stargate-dedup" /usr/bin/stargate-dedup 755 || restore
 install_file "$stage/dedup.sh" /usr/share/stargate/dedup.sh 755 || restore
 install_file "$stage/lib/config.sh" /usr/share/stargate/lib/config.sh 644 || restore
@@ -309,11 +328,16 @@ pgrep -f "^/usr/bin/stargate-dedup front .*-index-mib $index " >/dev/null || { e
 [ "$(pgrep -f '^/usr/bin/stargate-dedup front' | wc -l)" = 1 ] || echo "   note: old front still draining" >&2
 if [ -n "$reverse_listen" ]; then
   for _ in $(seq 10); do
-    netstat -ltn 2>/dev/null | grep -q " ${reverse_listen} " && break
+    listening "${reverse_listen##*:}" && break
     sleep 1
   done
-  netstat -ltn 2>/dev/null | grep -q " ${reverse_listen} " || { echo "reverse entry is not listening on $reverse_listen" >&2; restore; }
-  echo "   reverse entry listening on $reverse_listen for: $(/usr/share/stargate/dedup.sh reverse list | tr '\n' ' ')"
+  listening "${reverse_listen##*:}" || { echo "reverse entry is not listening on $reverse_listen" >&2; restore; }
+  # Every requested host, no more and no fewer: a dropped one would answer 421.
+  # The file the front reads, not only UCI.
+  listed=$(grep -v '^#' /etc/stargate/dedup/reverse-origins | LC_ALL=C sort -u | tr '\n' ' ' | sed 's/ *$//')
+  [ "$listed" = "$reverse_origins" ] ||
+    { echo "reverse origins on the router are '$listed', not '$reverse_origins'" >&2; restore; }
+  echo "   reverse entry listening on $reverse_listen for: $listed"
 fi
 [ "$(pgrep -f '^/usr/bin/sing-box' | head -1)" = "$singbox_pid" ] || echo "   WARNING: sing-box pid changed" >&2
 rm -rf "$stage"
