@@ -23,6 +23,9 @@ usage: tools/dedup/upgrade.sh --router root@ROUTER [--server root@SERVER] [optio
   --memory-max-mib N   decoder hard limit, systemd MemoryMax (default 1024)
   --build DIR          stargate-dedup builds from tools/dedup/build.sh
                        (default .local/dedup-build)
+  --reverse-listen A   also turn on the reverse entry on A (host:port) in the same
+                       handover; needs --reverse-origins
+  --reverse-origins H  space-separated upstream hosts for the reverse entry
 USAGE
   exit 2
 }
@@ -30,6 +33,7 @@ USAGE
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 router="" server="" decoder=0 apply=0
 index_mib=576 cache_mib=640 inflight_mib=128 memory_max_mib=1024
+reverse_listen="" reverse_origins=""
 build="$repo/.local/dedup-build"
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -41,6 +45,8 @@ while [ $# -gt 0 ]; do
     --inflight-mib) inflight_mib=$2; shift 2 ;;
     --memory-max-mib) memory_max_mib=$2; shift 2 ;;
     --build) build=$2; shift 2 ;;
+    --reverse-listen) reverse_listen=$2; shift 2 ;;
+    --reverse-origins) reverse_origins=$2; shift 2 ;;
     --apply) apply=1; shift ;;
     *) usage ;;
   esac
@@ -57,6 +63,13 @@ memory_mib=$((cache_mib * 5 / 4 + inflight_mib + 64))
   exit 2
 }
 [ "$index_mib" -le "$cache_mib" ] || { echo "index-mib must not exceed cache-mib" >&2; exit 2; }
+# The reverse entry changes the front's arguments, so it joins this handover
+# instead of costing one of its own; dedup.sh validates the values.
+if [ -n "$reverse_listen" ] || [ -n "$reverse_origins" ]; then
+  [ -n "$reverse_listen" ] && [ -n "$reverse_origins" ] || {
+    echo "--reverse-listen and --reverse-origins go together" >&2; exit 2;
+  }
+fi
 
 ssh_opts="-o BatchMode=yes -o ConnectTimeout=10"
 step() { printf '\n== %s\n' "$*"; }
@@ -131,7 +144,7 @@ for pair in "stargate-dedup:$bin" "dedup.sh:$repo/luci-app-stargate/root/usr/sha
   [ "$(on_router "sha256sum $stage/${pair%%:*} | cut -d' ' -f1")" = "$(sha256sum <"${pair#*:}" | cut -d' ' -f1)" ] ||
     die "staged ${pair%%:*} does not match"
 done
-on_router "sh -n $stage/dedup.sh && sh -n $stage/lib/config.sh && sh -n $stage/stargate-dedup.init && $stage/stargate-dedup front -h 2>&1 | grep -q inflight-wait" ||
+on_router "sh -n $stage/dedup.sh && sh -n $stage/lib/config.sh && sh -n $stage/stargate-dedup.init && $stage/stargate-dedup front -h 2>&1 | grep -q inflight-wait && { [ -z '$reverse_listen' ] || $stage/stargate-dedup front -h 2>&1 | grep -q -- -reverse-origins; }" ||
   die "staged files do not run on the router"
 say "staged and verified: checksums, shell syntax, binary runs on $arch"
 
@@ -253,9 +266,9 @@ fi
 
 # ---- router: swap the front ---------------------------------------------------
 step "router: upgrade front"
-on_router sh -s -- "$ts" "$index_mib" "$stage" <<'EOF' || die "router upgrade failed (restored)"
+on_router sh -s -- "$ts" "$index_mib" "$stage" "$reverse_listen" "$reverse_origins" <<'EOF' || die "router upgrade failed (restored)"
 set -e
-ts=$1 index=$2 stage=$3
+ts=$1 index=$2 stage=$3 reverse_listen=$4 reverse_origins=$5
 backup=/root/stargate-dedup-upgrade-$ts
 mkdir -p "$backup"
 (cd / && tar czf "$backup/backup.tar.gz" usr/bin/stargate-dedup usr/share/stargate/dedup.sh \
@@ -272,11 +285,19 @@ install_file "$stage/stargate-dedup" /usr/bin/stargate-dedup 755 || restore
 install_file "$stage/dedup.sh" /usr/share/stargate/dedup.sh 755 || restore
 install_file "$stage/lib/config.sh" /usr/share/stargate/lib/config.sh 644 || restore
 install_file "$stage/stargate-dedup.init" /etc/init.d/stargate-dedup 755 || restore
-uci set stargate.dedup.index_mib="$index" && uci commit stargate || restore
+uci set stargate.dedup.index_mib="$index" || restore
+if [ -n "$reverse_listen" ]; then
+  uci set stargate.dedup.reverse_listen="$reverse_listen" &&
+    uci set stargate.dedup.reverse_origins="$reverse_origins" || restore
+fi
+uci commit stargate || restore
 /usr/share/stargate/stargate.sh generate >/dev/null 2>&1 || restore
 cmp -s /etc/stargate/config.json.next /etc/stargate/config.json || { echo "sing-box config would change" >&2; restore; }
 rm -f /etc/stargate/config.json.next
 /usr/share/stargate/dedup.sh front | grep -q -- "-index-mib $index " || { echo "front arguments lack the new index" >&2; restore; }
+if [ -n "$reverse_listen" ]; then
+  /usr/share/stargate/dedup.sh front | grep -q -- "-reverse $reverse_listen " || { echo "front arguments lack the reverse entry" >&2; restore; }
+fi
 /etc/init.d/stargate-dedup start || restore
 # The old front lingers 3s and drains for up to 30s.
 for _ in $(seq 45); do
@@ -286,6 +307,14 @@ for _ in $(seq 45); do
 done
 pgrep -f "^/usr/bin/stargate-dedup front .*-index-mib $index " >/dev/null || { echo "new front is not running" >&2; restore; }
 [ "$(pgrep -f '^/usr/bin/stargate-dedup front' | wc -l)" = 1 ] || echo "   note: old front still draining" >&2
+if [ -n "$reverse_listen" ]; then
+  for _ in $(seq 10); do
+    netstat -ltn 2>/dev/null | grep -q " ${reverse_listen} " && break
+    sleep 1
+  done
+  netstat -ltn 2>/dev/null | grep -q " ${reverse_listen} " || { echo "reverse entry is not listening on $reverse_listen" >&2; restore; }
+  echo "   reverse entry listening on $reverse_listen for: $(/usr/share/stargate/dedup.sh reverse list | tr '\n' ' ')"
+fi
 [ "$(pgrep -f '^/usr/bin/sing-box' | head -1)" = "$singbox_pid" ] || echo "   WARNING: sing-box pid changed" >&2
 rm -rf "$stage"
 echo "   front replaced; sing-box pid $singbox_pid unchanged"
