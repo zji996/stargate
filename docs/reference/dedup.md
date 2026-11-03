@@ -93,6 +93,16 @@ UCI `stargate.dedup` 段，一般不需要改：
 
 **开启反向入口 = 一次前端交接。** `reverse_listen` 出现在前端参数里，procd 的实例名随之改变，所以设置或清空它都会起新实例（旧实例 `-linger` 3 秒后退出，`sing-box` 不重启、CA 不动）：
 
+前端程序还不认识 `-reverse` 时（从旧版升级），程序和这两个选项必须在同一次交接里到位，否则旧程序带着新参数起不来。用升级脚本一起做（它先装新程序、再改 UCI、核对 sing-box 配置不变后交接，失败整体恢复）：
+
+```sh
+tools/dedup/build.sh
+tools/dedup/upgrade.sh --router root@ROUTER --reverse-listen 10.0.0.1:10863 \
+  --reverse-origins 'api.example.com' --apply
+```
+
+程序已经支持时，也可以直接改 UCI 再交接：
+
 ```sh
 uci set stargate.dedup.reverse_listen='10.0.0.1:10863'
 uci set stargate.dedup.reverse_origins='api.example.com'
@@ -100,9 +110,11 @@ uci commit stargate
 /etc/init.d/stargate-dedup start   # 参数变了，procd 起新实例
 ```
 
+不要用 LuCI 的“保存并应用”做这一步：它会触发 Stargate 自身的 reload。
+
 端口不能与前端的 `port`..`port+2` 及其他 Stargate 端口重复；`reverse_origins` 为空时拒绝开启。
 
-**之后增删名单 = `reverse add/remove`，只发 SIGHUP**：名单放在 `$dedup_ca_dir/reverse-origins`（明文，0644），参数里只有路径，所以实例名不变。命令改 UCI、原子替换文件（临时文件 + `mv`，内容不变不重写）、前端在跑时 `/etc/init.d/stargate-dedup reload`（`reload_service` 只对运行中实例发 `procd_send_signal stargate-dedup '*' HUP`，不重新起实例）。不重启 `sing-box`、不重启前端、不碰 CA。失败时恢复原 UCI 与原文件，并对恢复后的文件再补发一次 SIGHUP。
+**之后增删名单 = `reverse add/remove`，只发 SIGHUP**：名单放在 `$dedup_ca_dir/reverse-origins`（明文，0644），参数里只有路径，所以实例名不变。命令改 UCI、原子替换文件（临时文件 + `mv`，内容不变不重写）、前端在跑时 `/etc/init.d/stargate-dedup reload`（`reload_service` 只给命令行带 `-reverse` 的前端进程发 SIGHUP，不重新起实例；旧版前端没有 SIGHUP 处理，收到会退出，所以不会给它们发，此时 reload 报错并回滚名单）。不重启 `sing-box`、不重启前端、不碰 CA。失败时恢复原 UCI 与原文件，并对恢复后的文件再补发一次 SIGHUP。
 
 ```sh
 /usr/share/stargate/dedup.sh reverse add api.example.com
